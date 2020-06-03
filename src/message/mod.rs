@@ -1,13 +1,12 @@
 use serde::{Serialize, Deserialize};
-use std::default::Default;
-use crate::requestable::Requestable;
-use serde_bytes::ByteBuf;
 use serde::de::DeserializeOwned;
-use std::collections::HashMap;
+use crate::requestable::Requestable;
+use crate::util::is_default;
 
-pub fn is_default<T: Default + PartialEq>(t: &T) -> bool {
-	t == &T::default()
-}
+pub mod value;
+pub mod templates;
+
+use value::Value;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Response {
@@ -23,35 +22,6 @@ pub struct Request {
 	pub req_id: usize,
 	#[serde(default, skip_serializing_if = "is_default")]
 	params: Value,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-#[serde(untagged)]
-pub enum Value {
-	Null,
-	Bool(bool),
-	Number(serde_json::Number),
-	String(String),
-	Bytes(serde_bytes::ByteBuf),
-	Array(Vec<Value>),
-	Object(HashMap<String, Value>),
-}
-
-impl Default for Value {
-	fn default() -> Self {
-		Value::Null
-	}
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
-#[serde(default)]
-pub struct Params {
-	#[serde(default, skip_serializing_if = "is_default")]
-	hashes: Vec<ByteBuf>,
-	#[serde(default, skip_serializing_if = "is_default")]
-	onions: Vec<ByteBuf>,
-	#[serde(flatten)]
-	other: serde_json::Value,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -87,12 +57,12 @@ impl ZeroMessage {
 	pub fn is_request(&self) -> bool {
 		!self.is_response()
 	}
-	pub fn body(self) -> Value {
-		match self {
+	pub fn body<V: DeserializeOwned + Serialize>(self) -> V {
+		let body = match self {
 			ZeroMessage::Response(res) => res.response,
-			// TODO: get all params
 			ZeroMessage::Request(req) => req.params,
-		}
+		};
+		serde_json::from_value(serde_json::to_value(body).unwrap()).unwrap()
 	}
 }
 
@@ -132,6 +102,15 @@ mod tests {
 		rmp_serde::from_slice(&bytes).unwrap()
 	}
 
+	use serde::{Serialize, Deserialize};
+	#[derive(Deserialize, Serialize, Debug)]
+	struct AnnounceParams {
+		hashes: Vec<serde_bytes::ByteBuf>,
+		port: usize,
+		need_types: Vec<String>,
+		delete: bool,
+	}
+
 	#[test]
 	fn test_announce() {
 		let text = r#"
@@ -159,6 +138,9 @@ mod tests {
 
 		let bytes = vec![131, 163, 99, 109, 100, 168, 97, 110, 110, 111, 117, 110, 99, 101, 166, 112, 97, 114, 97, 109, 115, 136, 163, 97, 100, 100, 146, 165, 111, 110, 105, 111, 110, 164, 105, 112, 118, 52, 166, 100, 101, 108, 101, 116, 101, 195, 166, 104, 97, 115, 104, 101, 115, 147, 220, 0, 32, 89, 112, 7, 110, 204, 192, 204, 202, 204, 246, 204, 172, 204, 153, 204, 204, 68, 17, 204, 131, 21, 113, 111, 125, 39, 66, 204, 195, 91, 53, 41, 204, 172, 78, 204, 234, 204, 146, 204, 138, 48, 204, 150, 109, 29, 220, 0, 32, 29, 204, 193, 204, 202, 204, 145, 204, 155, 127, 204, 205, 204, 249, 204, 222, 204, 181, 121, 80, 204, 223, 86, 204, 149, 204, 175, 49, 204, 199, 10, 204, 242, 204, 237, 120, 204, 239, 204, 250, 84, 204, 225, 204, 196, 19, 67, 54, 74, 31, 220, 0, 32, 204, 154, 94, 94, 204, 135, 80, 65, 204, 245, 204, 232, 204, 228, 204, 170, 204, 254, 51, 204, 215, 25, 204, 155, 204, 238, 32, 204, 182, 95, 83, 204, 131, 204, 168, 204, 192, 125, 22, 53, 43, 204, 147, 91, 204, 235, 29, 204, 146, 168, 110, 101, 101, 100, 95, 110, 117, 109, 20, 170, 110, 101, 101, 100, 95, 116, 121, 112, 101, 115, 145, 164, 105, 112, 118, 52, 175, 111, 110, 105, 111, 110, 95, 115, 105, 103, 110, 95, 116, 104, 105, 115, 160, 171, 111, 110, 105, 111, 110, 95, 115, 105, 103, 110, 115, 144, 164, 112, 111, 114, 116, 205, 60, 81, 166, 114, 101, 113, 95, 105, 100, 0];
 		assert_eq!(rmpd(bytes), msg);
+
+		let params: AnnounceParams = msg.body();
+		assert_eq!(params.port, 15441);
 	}
 
 	#[test]
@@ -173,7 +155,7 @@ mod tests {
 			"cmd": "getFile",
 			"req_id": 0,
 			"params": {}
-		}"#; 
+		}"#;
 		let msg = des(text).unwrap();
 		assert_eq!(msg.is_request(), true);
 		assert_eq!(rmpd(rmps(&msg)), msg);
@@ -243,19 +225,19 @@ mod tests {
 			"params": {
 				"site": "1ADDR",
 				"inner_path": "content.json",
-				"size": 1234	
+				"size": 1234
 			}
 		}"#);
 		assert_eq!(msg.is_ok(), true);
 	}
-	
+
 	#[test]
 	fn test_stream_file_response() {
 		let msg = des(r#"
 		{
 			"cmd": "response",
 			"to": 1,
-			"stream_bytes": 1234	
+			"stream_bytes": 1234
 		}"#);
 		assert_eq!(msg.is_ok(), true);
 	}

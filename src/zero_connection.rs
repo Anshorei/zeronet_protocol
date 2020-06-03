@@ -28,7 +28,6 @@ impl ZeroConnection {
 		ZeroConnection::new(reader, writer)
 	}
 
-	// TODO: integrate handshake and return future
 	pub fn new(reader: Box<dyn Read + Send>, writer: Box<dyn Write + Send>) -> Result<ZeroConnection, Error> {
 		let shared_state = SharedState::<ZeroMessage> {
 			reader: Arc::new(Mutex::new(reader)),
@@ -48,11 +47,27 @@ impl ZeroConnection {
 		Ok(conn)
 	}
 
+	pub fn connect(address: String, port: usize) -> impl Future<Output = Result<ZeroConnection, Error>> {
+		let address = Address::IPV4(address, port);
+		let mut connection = ZeroConnection::from_address(address).unwrap();
+
+		return async {
+			let body = crate::message::templates::Handshake::default();
+			let message = ZeroMessage::request("handshake", connection.req_id(), body);
+			let result = connection.connection.request(message).await;
+			if result.is_ok() {
+				return Ok(connection)
+			} else {
+				return Err(Error::empty())
+			}
+		}
+	}
+
 	pub fn recv(&mut self) -> impl Future<Output = Result<ZeroMessage, Error>> {
 		self.connection.recv()
 	}
 
-	pub fn respond(&mut self, to: usize, body: serde_json::Value) -> Result<(), Error> {
+	pub fn respond(&mut self, to: usize, body: serde_json::Value) -> impl Future<Output = Result<(), Error>> {
 		let message = ZeroMessage::response(to, body);
 		self.connection.send(message)
 	}

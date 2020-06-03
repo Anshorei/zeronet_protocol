@@ -4,6 +4,7 @@ pub mod async_connection;
 pub mod message;
 pub mod zero_connection;
 pub mod requestable;
+pub mod util;
 
 pub use zero_connection::ZeroConnection;
 pub use address::Address;

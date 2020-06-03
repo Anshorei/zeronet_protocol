@@ -18,6 +18,50 @@ pub struct SharedState<T> {
 	pub waker: Option<Waker>,
 }
 
+pub struct SendState<T> {
+	pub writer: Arc<Mutex<dyn Write + Send>>,
+	pub value: Option<T>,
+	pub result: Option<Result<(), Error>>,
+}
+
+pub struct SendFuture<T> {
+	pub state: Arc<Mutex<SendState<T>>>,
+	pub waker: Option<Waker>,
+}
+
+impl <T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for SendFuture<T> {
+	type Output = Result<(), Error>;
+
+	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+		let mut state = self.state.lock().unwrap();
+		if state.result.is_some() {
+			return Poll::Ready(state.result.take().unwrap());
+		}
+
+		let waker = cx.waker().clone();
+		let moved_state = self.state.clone();
+		std::thread::spawn(move || {
+			let mut state = moved_state.lock().unwrap();
+			let writer = state.writer.clone();
+			let mut writer = writer.lock().unwrap();
+
+			// TODO: replace this once issue is resolved
+			// first we have to serialize to json value
+			// because rmp_serde gives UnknownLength error
+			// https://github.com/3Hren/msgpack-rust/issues/196
+			// when this get fixed we can just use:
+			// rmp_serde::encode::write_named(&mut *writer, &message);
+			let jsoned = serde_json::to_value(state.value.take().unwrap()).unwrap();
+			let result = rmp_serde::encode::write_named(&mut *writer, &jsoned);
+
+			state.result = Some(result.map_err(|_| Error::empty()));
+			waker.wake();
+		});
+
+		Poll::Pending
+	}
+}
+
 #[must_use = "futures do nothing unless polled"]
 pub struct ResponseFuture<T> {
 	shared_state: Arc<Mutex<SharedState<T>>>,
@@ -117,18 +161,18 @@ pub struct Connection<T> where T: 'static + DeserializeOwned + Serialize + Send 
 }
 
 impl <T: 'static + DeserializeOwned + Serialize + Send + Requestable> Connection<T> {
-	pub fn send(&mut self, message: T) -> Result<(), Error> {
+	// TODO: send should also return future
+	pub fn send(&mut self, message: T) -> impl Future<Output = Result<(), Error>> {
 		let shared_state = self.shared_state.lock().unwrap();
-		let mut writer = shared_state.writer.lock().unwrap();
-
-		// TODO: replace this once fixed
-		// first we have to serialize to json value
-		// because rmp_serde gives UnknownLength error
-		let jsoned = serde_json::to_value(&message).unwrap();
-		rmp_serde::encode::write_named(&mut *writer, &jsoned)?;
-
-		// rmp_serde::encode::write_named(&mut *writer, &message)?;
-		Ok(())
+		let state = SendState{
+			writer: shared_state.writer.clone(),
+			result: None,
+			value: Some(message),
+		};
+		SendFuture{
+			state: Arc::new(Mutex::new(state)),
+			waker: None,
+		}
 	}
 	pub fn recv(&mut self) -> impl Future<Output = Result<T, Error>> {
 		let value = Arc::new(Mutex::new(None));
@@ -158,9 +202,16 @@ impl <T: 'static + DeserializeOwned + Serialize + Send + Requestable> Connection
 			req_id: message.req_id(),
 		};
 
-		// TODO: make this part of the future
-		self.send(message).unwrap();
+		let send_future = self.send(message);
 
-		future
+		// TODO: make this part of the future
+		return async {
+			let res = send_future.await;
+			if res.is_ok() {
+				future.await
+			} else {
+				Err(res.unwrap_err())
+			}
+		}
 	}
 }
