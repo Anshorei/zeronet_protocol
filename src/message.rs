@@ -3,6 +3,7 @@ use std::default::Default;
 use crate::requestable::Requestable;
 use serde_bytes::ByteBuf;
 use serde::de::DeserializeOwned;
+use std::collections::HashMap;
 
 pub fn is_default<T: Default + PartialEq>(t: &T) -> bool {
 	t == &T::default()
@@ -13,7 +14,7 @@ pub struct Response {
 	pub cmd: String,
 	pub to: usize,
 	#[serde(flatten)]
-	response: serde_json::Value,
+	response: Value,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -21,7 +22,25 @@ pub struct Request {
 	pub cmd: String,
 	pub req_id: usize,
 	#[serde(default, skip_serializing_if = "is_default")]
-	params: Params,
+	params: Value,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum Value {
+	Null,
+	Bool(bool),
+	Number(serde_json::Number),
+	String(String),
+	Bytes(serde_bytes::ByteBuf),
+	Array(Vec<Value>),
+	Object(HashMap<String, Value>),
+}
+
+impl Default for Value {
+	fn default() -> Self {
+		Value::Null
+	}
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
@@ -47,11 +66,7 @@ impl ZeroMessage {
 		let request = Request{
 			cmd: cmd.to_string(),
 			req_id,
-			params: Params{
-				hashes: vec![],
-				onions: vec![],
-				other: serde_json::to_value(body).unwrap(),
-			},
+			params: serde_json::from_value(serde_json::to_value(body).unwrap()).unwrap(),
 		};
 		ZeroMessage::Request(request)
 	}
@@ -59,7 +74,7 @@ impl ZeroMessage {
 		let response = Response{
 			cmd: "response".to_string(),
 			to,
-			response: serde_json::to_value(body).unwrap(),
+			response: serde_json::from_value(serde_json::to_value(body).unwrap()).unwrap(),
 		};
 		ZeroMessage::Response(response)
 	}
@@ -72,11 +87,11 @@ impl ZeroMessage {
 	pub fn is_request(&self) -> bool {
 		!self.is_response()
 	}
-	pub fn body(self) -> serde_json::Value {
+	pub fn body(self) -> Value {
 		match self {
 			ZeroMessage::Response(res) => res.response,
 			// TODO: get all params
-			ZeroMessage::Request(req) => req.params.other,
+			ZeroMessage::Request(req) => req.params,
 		}
 	}
 }
@@ -129,7 +144,6 @@ mod tests {
 					[29, 193, 202, 145, 155, 127, 205, 249, 222, 181, 121, 80, 223, 86, 149, 175, 49, 199, 10, 242, 237, 120, 239, 250, 84, 225, 196, 19, 67, 54, 74, 31],
 					[154, 94, 94, 135, 80, 65, 245, 232, 228, 170, 254, 51, 215, 25, 155, 238, 32, 182, 95, 83, 131, 168, 192, 125, 22, 53, 43, 147, 91, 235, 29, 146]
 				],
-				"onions": [],
 				"onion_signs": [],
 				"onion_sign_this": "",
 				"port": 15441,
