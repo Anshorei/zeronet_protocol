@@ -7,6 +7,7 @@ pub mod requestable;
 pub mod util;
 
 pub use zero_connection::ZeroConnection;
+pub use message::ZeroMessage;
 pub use address::Address;
 
 #[cfg(test)]
@@ -56,10 +57,10 @@ mod tests {
 		let mut conn = ZeroConnection::from_address(address).unwrap();
 		let handshake_future = conn.request("handshake", handshake());
 		let response = block_on(handshake_future).unwrap();
-		assert_eq!(response.to(), Some(conn.last_req_id()));
+		assert_eq!(response.to, conn.last_req_id());
 
 		let announce_future = conn.request("announce", announce());
 		let response = block_on(announce_future).unwrap();
-		assert_eq!(response.to(), Some(conn.last_req_id()));
+		assert_eq!(response.to, conn.last_req_id());
 	}
 }
