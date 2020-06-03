@@ -1,7 +1,7 @@
-use std::sync::mpsc::{Receiver, Sender};
+use crate::error::Error;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use crate::error::Error;
+use std::sync::mpsc::{Receiver, Sender};
 
 pub enum Address {
 	IPV4(String, usize),
@@ -17,11 +17,9 @@ impl Address {
 		match self {
 			Address::IPV4(address, port) => {
 				let socket = TcpStream::connect(format!("{}:{}", address, port))?;
-				return Ok((Box::new(socket.try_clone()?), Box::new(socket)))
+				return Ok((Box::new(socket.try_clone()?), Box::new(socket)));
 			}
-			_ => {
-				Err(Error::empty())
-			}
+			_ => Err(Error::empty()),
 		}
 	}
 }

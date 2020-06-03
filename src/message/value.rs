@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use serde_json::Number;
+use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
-use serde::{Serialize, Deserialize};
+use serde_json::Number;
+use std::collections::HashMap;
 
 /// Value is a custom enum mimicking serde_json::Value
 /// but with serde_bytes::ByteBuf added in, this way

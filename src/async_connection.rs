@@ -1,14 +1,14 @@
 use crate::error::Error;
-use std::future::Future;
-use std::task::{Poll, Context, Waker};
-use std::pin::Pin;
+use crate::requestable::Requestable;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 use std::clone::Clone;
+use std::collections::HashMap;
+use std::future::Future;
 use std::io::{Read, Write};
-use crate::requestable::Requestable;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll, Waker};
 
 pub struct SharedState<T> {
 	pub reader: Arc<Mutex<dyn Read + Send>>,
@@ -29,7 +29,7 @@ pub struct SendFuture<T> {
 	pub waker: Option<Waker>,
 }
 
-impl <T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for SendFuture<T> {
+impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for SendFuture<T> {
 	type Output = Result<(), Error>;
 
 	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -69,7 +69,7 @@ pub struct ResponseFuture<T> {
 	req_id: Option<usize>,
 }
 
-impl <T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for ResponseFuture<T> {
+impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for ResponseFuture<T> {
 	type Output = Result<T, Error>;
 
 	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -82,7 +82,9 @@ impl <T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for
 
 		let waker = cx.waker().clone();
 		if let Some(req_id) = self.req_id {
-			shared_state.requests.insert(req_id, (self.value.clone(), Some(waker.clone())));
+			shared_state
+				.requests
+				.insert(req_id, (self.value.clone(), Some(waker.clone())));
 		} else {
 			shared_state.waker = Some(waker.clone());
 		}
@@ -142,8 +144,8 @@ fn close_connection<T>(shared_state: &SharedState<T>) {
 		match *value {
 			None => {
 				*value = Some(Err(Error::empty()));
-			},
-			Some(_) => {},
+			}
+			Some(_) => {}
 		}
 		if let Some(waker) = waker.clone() {
 			waker.wake();
@@ -156,20 +158,23 @@ fn close_connection<T>(shared_state: &SharedState<T>) {
 	}
 }
 
-pub struct Connection<T> where T: 'static + DeserializeOwned + Serialize + Send + Requestable {
+pub struct Connection<T>
+where
+	T: 'static + DeserializeOwned + Serialize + Send + Requestable,
+{
 	pub shared_state: Arc<Mutex<SharedState<T>>>,
 }
 
-impl <T: 'static + DeserializeOwned + Serialize + Send + Requestable> Connection<T> {
+impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Connection<T> {
 	// TODO: send should also return future
 	pub fn send(&mut self, message: T) -> impl Future<Output = Result<(), Error>> {
 		let shared_state = self.shared_state.lock().unwrap();
-		let state = SendState{
+		let state = SendState {
 			writer: shared_state.writer.clone(),
 			result: None,
 			value: Some(message),
 		};
-		SendFuture{
+		SendFuture {
 			state: Arc::new(Mutex::new(state)),
 			waker: None,
 		}
@@ -179,7 +184,7 @@ impl <T: 'static + DeserializeOwned + Serialize + Send + Requestable> Connection
 		let mut shared_state = self.shared_state.lock().unwrap();
 		shared_state.value = value.clone();
 
-		ResponseFuture{
+		ResponseFuture {
 			shared_state: self.shared_state.clone(),
 			value: value,
 			req_id: None,
@@ -196,7 +201,7 @@ impl <T: 'static + DeserializeOwned + Serialize + Send + Requestable> Connection
 		}
 
 		// TODO: request future should error if no req_id
-		let future = ResponseFuture{
+		let future = ResponseFuture {
 			shared_state: self.shared_state.clone(),
 			value: value,
 			req_id: message.req_id(),
@@ -212,6 +217,6 @@ impl <T: 'static + DeserializeOwned + Serialize + Send + Requestable> Connection
 			} else {
 				Err(res.unwrap_err())
 			}
-		}
+		};
 	}
 }

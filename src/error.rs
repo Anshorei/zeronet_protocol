@@ -1,5 +1,5 @@
 #[derive(Debug, PartialEq, Eq)]
-pub struct Error{
+pub struct Error {
 	message: String,
 }
 
@@ -30,7 +30,7 @@ impl From<rmp_serde::decode::Error> for Error {
 	}
 }
 
-impl <T> From<std::sync::mpsc::SendError<T>> for Error {
+impl<T> From<std::sync::mpsc::SendError<T>> for Error {
 	fn from(_: std::sync::mpsc::SendError<T>) -> Error {
 		Error::empty()
 	}
