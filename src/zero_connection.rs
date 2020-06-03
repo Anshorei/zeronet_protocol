@@ -34,9 +34,8 @@ pub struct ZeroConnection {
 	/// 	let listener = TcpListener::bind("127.0.0.1:8001").unwrap();
 	///
 	/// 	for stream in listener.incoming() {
-	/// 		match stream {
-	/// 			Ok(stream) => handle_connection(stream),
-	/// 			_ => {},
+	/// 		if let Ok(stream) = stream {
+	/// 			handle_connection(stream)
 	/// 		}
 	/// 	}
 	/// }
@@ -46,22 +45,7 @@ pub struct ZeroConnection {
 }
 
 impl ZeroConnection {
-	fn req_id(&mut self) -> usize {
-		self.next_req_id += 1;
-		self.next_req_id - 1
-	}
-
-	/// Get the req_id of the last request
-	pub fn last_req_id(&self) -> usize {
-		self.next_req_id - 1
-	}
-
-	pub fn from_address(address: Address) -> Result<ZeroConnection, Error> {
-		let (reader, writer) = address.get_pair().unwrap();
-		ZeroConnection::new(reader, writer)
-	}
-
-	/// Create a new ZeroConnection from a given reader and writer
+	/// Creates a new ZeroConnection from a given reader and writer
 	pub fn new(
 		reader: Box<dyn Read + Send>,
 		writer: Box<dyn Write + Send>,
@@ -84,6 +68,14 @@ impl ZeroConnection {
 		Ok(conn)
 	}
 
+	/// Creates a new ZeroConnection from a given address
+	pub fn from_address(address: Address) -> Result<ZeroConnection, Error> {
+		let (reader, writer) = address.get_pair().unwrap();
+		ZeroConnection::new(reader, writer)
+	}
+
+	/// Connect to an ip and port and perform the handshake,
+	/// then return the ZeroConnection.
 	pub fn connect(
 		address: String,
 		port: usize,
@@ -103,6 +95,9 @@ impl ZeroConnection {
 		};
 	}
 
+	/// Returns a future that will read from the internal reader
+	/// and attempt to decode valid ZeroMessages.
+	/// The future returns the first Request that gets decoded.
 	pub fn recv(&mut self) -> impl Future<Output = Result<Request, Error>> {
 		let result = self.connection.recv();
 
@@ -115,6 +110,9 @@ impl ZeroConnection {
 		};
 	}
 
+	/// Respond to a request.
+	/// The `body` variable is flattened into the ZeroMessage,
+	/// therefore it should be an object, a map or a pair.
 	pub fn respond<T: DeserializeOwned + Serialize>(
 		&mut self,
 		to: usize,
@@ -124,6 +122,11 @@ impl ZeroConnection {
 		self.connection.send(message)
 	}
 
+	/// Returns a future that will send a request with
+	/// a new `req_id` and then read from internal reader
+	/// and attempt to decode valid ZeroMessages.
+	/// The future returns the first Response that
+	/// has the corresponding `to` field.
 	pub fn request<T: DeserializeOwned + Serialize>(
 		&mut self,
 		cmd: &str,
@@ -139,5 +142,15 @@ impl ZeroConnection {
 				Ok(ZeroMessage::Request(_)) => Err(Error::empty()),
 			}
 		};
+	}
+
+	/// Get the req_id of the last request
+	pub fn last_req_id(&self) -> usize {
+		self.next_req_id - 1
+	}
+
+	fn req_id(&mut self) -> usize {
+		self.next_req_id += 1;
+		self.next_req_id - 1
 	}
 }
