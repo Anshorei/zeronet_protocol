@@ -1,3 +1,4 @@
+use crate::error::Error;
 use crate::requestable::Requestable;
 use crate::util::is_default;
 use serde::de::DeserializeOwned;
@@ -16,12 +17,28 @@ pub struct Response {
 	response: Value,
 }
 
+impl Response {
+	pub fn body<V: DeserializeOwned + Serialize>(&self) -> Result<V, Error> {
+		let result = serde_json::to_value(&self.response)?;
+		let result = serde_json::from_value(result)?;
+		Ok(result)
+	}
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Request {
 	pub cmd: String,
 	pub req_id: usize,
 	#[serde(default, skip_serializing_if = "is_default")]
 	params: Value,
+}
+
+impl Request {
+	pub fn body<V: DeserializeOwned + Serialize>(&self) -> Result<V, Error> {
+		let result = serde_json::to_value(&self.params)?;
+		let result = serde_json::from_value(result)?;
+		Ok(result)
+	}
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -61,12 +78,11 @@ impl ZeroMessage {
 	pub fn is_request(&self) -> bool {
 		!self.is_response()
 	}
-	pub fn body<V: DeserializeOwned + Serialize>(self) -> V {
-		let body = match self {
-			ZeroMessage::Response(res) => res.response,
-			ZeroMessage::Request(req) => req.params,
-		};
-		serde_json::from_value(serde_json::to_value(body).unwrap()).unwrap()
+	pub fn body<V: DeserializeOwned + Serialize>(self) -> Result<V, Error> {
+		match self {
+			ZeroMessage::Response(res) => res.body(),
+			ZeroMessage::Request(req) => req.body(),
+		}
 	}
 }
 
@@ -158,7 +174,7 @@ mod tests {
 		];
 		assert_eq!(rmpd(bytes), msg);
 
-		let params: AnnounceParams = msg.body();
+		let params: AnnounceParams = msg.body().unwrap();
 		assert_eq!(params.port, 15441);
 	}
 

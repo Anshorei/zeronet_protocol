@@ -20,10 +20,11 @@ pub struct ZeroConnection {
 	/// ```no_run
 	/// use std::net::{TcpStream, TcpListener};
 	/// use futures::executor::block_on;
-	///	use zeronet_protocol::{ZeroConnection, ZeroMessage};
+	///	use zeronet_protocol::{ZeroConnection, ZeroMessage, Address};
 	///
 	/// fn handle_connection(stream: TcpStream) {
-	///		let mut connection = ZeroConnection::new(Box::new(stream.try_clone().unwrap()), Box::new(stream)).unwrap();
+	/// 	let address = Address::from(stream.peer_addr().unwrap());
+	///		let mut connection = ZeroConnection::new(address, Box::new(stream.try_clone().unwrap()), Box::new(stream)).unwrap();
 	///		let request = block_on(connection.recv()).unwrap();
 	///
 	///		let body = "anything serializable".to_string();
@@ -42,11 +43,13 @@ pub struct ZeroConnection {
 	/// ```
 	pub connection: Connection<ZeroMessage>,
 	pub next_req_id: usize,
+	pub address: Address,
 }
 
 impl ZeroConnection {
 	/// Creates a new ZeroConnection from a given reader and writer
 	pub fn new(
+		address: Address,
 		reader: Box<dyn Read + Send>,
 		writer: Box<dyn Write + Send>,
 	) -> Result<ZeroConnection, Error> {
@@ -63,6 +66,7 @@ impl ZeroConnection {
 		let conn = ZeroConnection {
 			connection: conn,
 			next_req_id: 0,
+			address,
 		};
 
 		Ok(conn)
@@ -71,19 +75,16 @@ impl ZeroConnection {
 	/// Creates a new ZeroConnection from a given address
 	pub fn from_address(address: Address) -> Result<ZeroConnection, Error> {
 		let (reader, writer) = address.get_pair().unwrap();
-		ZeroConnection::new(reader, writer)
+		ZeroConnection::new(address, reader, writer)
 	}
 
 	/// Connect to an ip and port and perform the handshake,
 	/// then return the ZeroConnection.
-	pub fn connect(
-		address: String,
-		port: usize,
-	) -> impl Future<Output = Result<ZeroConnection, Error>> {
-		let address = Address::IPV4(address, port);
-		let mut connection = ZeroConnection::from_address(address).unwrap();
-
+	pub fn connect(address: String) -> impl Future<Output = Result<ZeroConnection, Error>> {
 		return async {
+			let address = Address::parse(address)?;
+			let mut connection = ZeroConnection::from_address(address).unwrap();
+
 			let body = crate::message::templates::Handshake::default();
 			let message = ZeroMessage::request("handshake", connection.req_id(), body);
 			let result = connection.connection.request(message).await;

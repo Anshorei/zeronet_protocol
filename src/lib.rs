@@ -53,7 +53,7 @@ mod tests {
 
 	#[test]
 	fn test_request() {
-		let address = Address::IPV4("127.0.0.1".to_string(), 8002);
+		let address = Address::parse("127.0.0.1:8002".to_string()).unwrap();
 		let mut conn = ZeroConnection::from_address(address).unwrap();
 		let handshake_future = conn.request("handshake", handshake());
 		let response = block_on(handshake_future).unwrap();

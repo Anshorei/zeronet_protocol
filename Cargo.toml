@@ -16,3 +16,4 @@ rmpv = "*"
 rmp = "0.8.9"
 tokio = { version = "0.2.21", features = ["tcp", "dns"] }
 futures = "0.3.5"
+base64 = "*"

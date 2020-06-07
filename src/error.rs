@@ -1,49 +1,73 @@
-#[derive(Debug, PartialEq, Eq)]
-pub struct Error {
-	message: String,
+use crate::address::ParseError;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Error {
+	InvalidData(String),
+	Io(String),
+	Other(String),
+	ParseError,
+	Empty,
 }
 
 impl Error {
 	pub fn empty() -> Error {
-		Error {
-			message: String::new(),
-		}
+		Error::Empty
 	}
 	pub fn text(message: &str) -> Error {
-		Error {
-			message: message.to_string(),
-		}
+		Error::Other(message.to_string())
 	}
 }
 
 impl From<rmp_serde::encode::Error> for Error {
 	fn from(err: rmp_serde::encode::Error) -> Error {
-		Error {
-			message: format!("{:?}", err),
+		Error::text(&format!("{:?}", err))
+	}
+}
+
+impl From<serde_json::Error> for Error {
+	fn from(err: serde_json::Error) -> Error {
+		match err.classify() {
+			serde_json::error::Category::Data => Error::InvalidData(err.to_string()),
+			_ => Error::text(&format!("{:?}", err)),
 		}
 	}
 }
 
 impl From<rmp_serde::decode::Error> for Error {
-	fn from(_: rmp_serde::decode::Error) -> Error {
-		Error::empty()
+	fn from(err: rmp_serde::decode::Error) -> Error {
+		match err {
+			rmp_serde::decode::Error::InvalidMarkerRead(_) => Error::Io(format!("{:?}", err)),
+			_ => Error::text(&format!("{:?}", err)),
+		}
 	}
 }
 
 impl<T> From<std::sync::mpsc::SendError<T>> for Error {
-	fn from(_: std::sync::mpsc::SendError<T>) -> Error {
-		Error::empty()
+	fn from(err: std::sync::mpsc::SendError<T>) -> Error {
+		Error::text(&format!("{:?}", err))
 	}
 }
 
 impl From<std::sync::mpsc::RecvError> for Error {
-	fn from(_: std::sync::mpsc::RecvError) -> Error {
-		Error::empty()
+	fn from(err: std::sync::mpsc::RecvError) -> Error {
+		Error::text(&format!("{:?}", err))
 	}
 }
 
 impl From<std::io::Error> for Error {
-	fn from(_: std::io::Error) -> Error {
+	fn from(err: std::io::Error) -> Error {
+		Error::text(&format!("{:?}", err))
+	}
+}
+
+impl From<ParseError> for Error {
+	fn from(_: ParseError) -> Error {
+		Error::ParseError
+	}
+}
+
+impl From<base64::DecodeError> for Error {
+	fn from(_: base64::DecodeError) -> Error {
 		Error::empty()
 	}
 }

@@ -1,4 +1,5 @@
 use crate::error::Error;
+use crate::message::value::Value;
 use crate::requestable::Requestable;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -50,11 +51,22 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
 			// because rmp_serde gives UnknownLength error
 			// https://github.com/3Hren/msgpack-rust/issues/196
 			// when this get fixed we can just use:
-			// rmp_serde::encode::write_named(&mut *writer, &message);
-			let jsoned = serde_json::to_value(state.value.take().unwrap()).unwrap();
-			let result = rmp_serde::encode::write_named(&mut *writer, &jsoned);
+			//
+			// let result = rmp_serde::encode::write_named(&mut *writer, &state.value.take().unwrap())
+			// 	.map_err(|err| Error::from(err));
+			// state.result = Some(result);
 
-			state.result = Some(result.map_err(|_| Error::empty()));
+			// TODO: remove unwraps and handle errors
+			let jsoned = serde_json::to_value(state.value.take().unwrap());
+			let value: Result<Value, _> = serde_json::from_value(jsoned.unwrap());
+			let result = match value {
+				Err(err) => Err(Error::from(err)),
+				Ok(jsoned) => {
+					rmp_serde::encode::write_named(&mut *writer, &jsoned).map_err(|err| Error::from(err))
+				}
+			};
+			state.result = Some(result);
+
 			waker.wake();
 		});
 
@@ -103,8 +115,7 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
 			let mut moved_state = moved_state.lock().unwrap();
 
 			if let Err(err) = response {
-				println!("Received error: {:?}", err);
-				close_connection(&moved_state);
+				close_connection(&moved_state, Error::from(err));
 				return;
 			}
 
@@ -138,12 +149,12 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
 	}
 }
 
-fn close_connection<T>(shared_state: &SharedState<T>) {
+fn close_connection<T>(shared_state: &SharedState<T>, err: Error) {
 	for (value, waker) in shared_state.requests.values() {
 		let mut value = value.lock().unwrap();
 		match *value {
 			None => {
-				*value = Some(Err(Error::empty()));
+				*value = Some(Err(err.clone()));
 			}
 			Some(_) => {}
 		}
@@ -152,7 +163,7 @@ fn close_connection<T>(shared_state: &SharedState<T>) {
 		}
 	}
 	let mut value = shared_state.value.lock().unwrap();
-	*value = Some(Err(Error::empty()));
+	*value = Some(Err(err));
 	if let Some(waker) = shared_state.waker.clone() {
 		waker.wake();
 	}
