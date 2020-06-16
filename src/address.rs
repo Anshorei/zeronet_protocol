@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::net::{TcpStream, SocketAddr, ToSocketAddrs};
 use base64::{encode, decode};
+use koibumi_base32 as base32;
 
 #[derive(Debug)]
 pub struct ParseError {
@@ -57,16 +58,23 @@ impl Address {
 	/// ```
 	pub fn parse<S: Into<String>>(address: S) -> Result<Address, ParseError> {
 		let address: String = address.into();
-		if let Some(address) = address.strip_suffix(".onion") {
+		let parts: Vec<&str> = address.split(":").collect();
+		if let Some(address) = parts[0].strip_suffix(".onion") {
 			// TODO: handle onion v3 addresses
 			// TODO: hash address
-			return Ok(Address::OnionV2(address.to_string(), 0));
-		} else if let Some(address) = address.strip_suffix(".i2p") {
-			return Ok(Address::I2PB32(address.to_string(), 0));
+			if let Some(port) = parts.get(1) {
+				let port = port.to_string().parse::<u16>()?;
+				return Ok(Address::OnionV2(address.to_string(), port));
+			}
+		} else if let Some(address) = parts[0].strip_suffix(".i2p") {
+			if let Some(port) = parts.get(1) {
+				let port = port.to_string().parse::<u16>()?;
+				return Ok(Address::I2PB32(address.to_string(), port));
+			}
 		}
 		let parts: Vec<&str> = address.split(":").collect();
 		if parts.len() > 2 {
-			// IPV6
+			// TODO: Implement IPV6 parsing
 		} else if let Some(address) = parts.first() {
 			let bytes: Vec<Result<u8, _>> = address
 				.to_string()
@@ -88,6 +96,7 @@ impl Address {
 
 		Err(ParseError::text("Unrecognized address format"))
 	}
+
 	/// unpack
 	/// ```
 	/// use zeronet_protocol::Address;
@@ -113,13 +122,14 @@ impl Address {
 				let port = bytes[10] as u16 * 256 + bytes[11] as u16;
 				let mut array = [0u8; 10];
 				array.copy_from_slice(&bytes[..10]);
-				let address = encode(&array);
+				let address = base32::encode(&array)?;
 				Ok(Address::OnionV2(address, port))
 			},
 			// 42 => // TODO: Onion V3
 			_ => Err(Error::empty()),
 		}
 	}
+
 	/// pack
 	/// ```
 	/// use zeronet_protocol::Address;
@@ -128,6 +138,13 @@ impl Address {
 	/// let packed = address.pack();
 	///
 	/// assert_eq!(packed, [127, 0, 0, 1, 16, 225]);
+	///
+	/// let address = Address::parse("ytcnzluhaxidtbf4.onion:4321").unwrap();
+	/// let packed = address.pack();
+	/// let unpacked = Address::unpack(&packed).unwrap();
+	///
+	/// assert_eq!(packed, [196, 196, 220, 174, 135, 5, 208, 57, 132, 188, 16, 225]);
+	/// assert_eq!(unpacked.to_string(), "ytcnzluhaxidtbf4.onion:4321".to_string());
 	/// ```
 	/// TODO: test IPV6 and Onion
 	pub fn pack(&self) -> Vec<u8> {
@@ -143,13 +160,18 @@ impl Address {
 				bytes
 			},
 			Address::OnionV2(address, port) => {
-				let mut bytes = decode(address).unwrap();
+				// let base32: based::Base = "abcdefghijklmnopqrstuvwxyz234567".parse().unwrap();
+				// let mut bytes = base32.decode(address).unwrap();
+				let address = address.to_lowercase();
+				println!("{:?}", address);
+				let mut bytes = base32::decode(address).unwrap();
 				bytes.append(&mut port.to_be_bytes().to_vec());
 				bytes
 			},
 			_ => vec![],
 		}
 	}
+
 	/// To string
 	/// ```
 	/// use zeronet_protocol::Address;
@@ -163,6 +185,9 @@ impl Address {
 				"{}.{}.{}.{}:{}",
 				address[0], address[1], address[2], address[3], port
 			),
+			Address::OnionV2(address, port) => format!(
+				"{}.onion:{}", address, port
+			),
 			_ => "not implemented".to_string(),
 		}
 	}
@@ -175,6 +200,7 @@ impl Address {
 			_ => Err(Error::empty()),
 		}
 	}
+
 	/// Change the port of the address.
 	/// ```
 	/// use zeronet_protocol::Address;

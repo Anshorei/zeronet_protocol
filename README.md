@@ -5,6 +5,12 @@
 # Roadmap
 - [x] Implementation covers basic use-cases
 - [x] Make send and receive async
+- [ ] Parse addresses
+	- [x] IPV4, IPV6 & OnionV2
+	- [ ] OnionV3, I2P, LokiNet
+- [ ] Pack and unpack addresses
+	- [x] IPV4, IPV6 & OnionV2
+	- [ ] OnionV3, I2P, LokiNet
 - [ ] Support receiving of the streamFile response
 - [ ] Add configurable timeouts
 - [ ] Add serialization and deserialization tests for all message types used by ZeroNet-py3 and ZeroNet trackers.

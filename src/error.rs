@@ -6,6 +6,7 @@ pub enum Error {
 	Io(String),
 	Other(String),
 	ParseError,
+	EncodeError,
 	Empty,
 }
 
@@ -69,5 +70,11 @@ impl From<ParseError> for Error {
 impl From<base64::DecodeError> for Error {
 	fn from(_: base64::DecodeError) -> Error {
 		Error::empty()
+	}
+}
+
+impl From<koibumi_base32::EncodeError> for Error {
+	fn from(_: koibumi_base32::EncodeError) -> Error {
+		Error::EncodeError
 	}
 }
