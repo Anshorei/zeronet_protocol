@@ -57,8 +57,15 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
 			// state.result = Some(result);
 
 			// TODO: remove unwraps and handle errors
-			let jsoned = serde_json::to_value(state.value.take().unwrap());
-			let value: Result<Value, _> = serde_json::from_value(jsoned.unwrap());
+			let jsoned = match serde_json::to_value(state.value.take().unwrap()) {
+				Ok(json) => json,
+				Err(err) => {
+					state.result = Some(Err(err.into()));
+					waker.wake();
+					return;
+				},
+			};
+			let value: Result<Value, _> = serde_json::from_value(jsoned);
 			let result = match value {
 				Err(err) => Err(Error::from(err)),
 				Ok(jsoned) => {

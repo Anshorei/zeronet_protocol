@@ -24,7 +24,7 @@ impl From<std::num::ParseIntError> for ParseError {
 	}
 }
 
-#[derive(Clone, Hash)]
+#[derive(Clone, Hash, Eq, PartialEq)]
 pub enum Address {
 	IPV4([u8; 4], u16),
 	IPV6([u8; 16], u16),
@@ -160,10 +160,7 @@ impl Address {
 				bytes
 			},
 			Address::OnionV2(address, port) => {
-				// let base32: based::Base = "abcdefghijklmnopqrstuvwxyz234567".parse().unwrap();
-				// let mut bytes = base32.decode(address).unwrap();
 				let address = address.to_lowercase();
-				println!("{:?}", address);
 				let mut bytes = base32::decode(address).unwrap();
 				bytes.append(&mut port.to_be_bytes().to_vec());
 				bytes
@@ -209,14 +206,24 @@ impl Address {
 	/// let address = address.with_port(1234);
 	/// assert_eq!(address.to_string(), "127.0.0.1:1234".to_string());
 	/// ```
-	pub fn with_port(self, port: u16) -> Address {
+	pub fn with_port(&self, port: u16) -> Address {
 		match self {
-			Address::IPV4(ip, _) => Address::IPV4(ip, port),
-			Address::IPV6(ip, _) => Address::IPV6(ip, port),
-			Address::OnionV2(addr, _) => Address::OnionV2(addr, port),
-			Address::OnionV3(addr, _) => Address::OnionV3(addr, port),
-			Address::I2PB32(addr, _) => Address::I2PB32(addr, port),
-			Address::Loki(addr, _) => Address::Loki(addr, port),
+			Address::IPV4(ip, _) => Address::IPV4(*ip, port),
+			Address::IPV6(ip, _) => Address::IPV6(*ip, port),
+			Address::OnionV2(addr, _) => Address::OnionV2(addr.to_string(), port),
+			Address::OnionV3(addr, _) => Address::OnionV3(addr.to_string(), port),
+			Address::I2PB32(addr, _) => Address::I2PB32(addr.to_string(), port),
+			Address::Loki(addr, _) => Address::Loki(addr.to_string(), port),
+		}
+	}
+	pub fn get_port(&self) -> u16 {
+		match self {
+			Address::IPV4(_, port) => *port,
+			Address::IPV6(_, port) => *port,
+			Address::OnionV2(_, port) => *port,
+			Address::OnionV3(_, port) => *port,
+			Address::I2PB32(_, port) => *port,
+			Address::Loki(_, port) => *port,
 		}
 	}
 	pub fn is_clearnet(&self) -> bool {
