@@ -56,26 +56,57 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
 			// 	.map_err(|err| Error::from(err));
 			// state.result = Some(result);
 
-			// TODO: remove unwraps and handle errors
-			let jsoned = match serde_json::to_value(state.value.take().unwrap()) {
-				Ok(json) => json,
-				Err(err) => {
-					state.result = Some(Err(err.into()));
-					waker.wake();
-					return;
-				},
-			};
-			let value: Result<Value, _> = serde_json::from_value(jsoned);
-			let result = match value {
-				Err(err) => Err(Error::from(err)),
-				Ok(jsoned) => {
-					rmp_serde::encode::write_named(&mut *writer, &jsoned).map_err(|err| Error::from(err))
-				}
-			};
-			state.result = Some(result);
+			// TODO: add timeout for pending requests
+
+			if let value = state.value.take() {
+				let jsoned = match serde_json::to_value(value) {
+					Ok(json) => json,
+					Err(err) => {
+						state.result = Some(Err(err.into()));
+						waker.wake();
+						return;
+					},
+				};
+				let value: Result<Value, _> = serde_json::from_value(jsoned);
+				let result = match value {
+					Err(err) => Err(Error::from(err)),
+					Ok(jsoned) => {
+						rmp_serde::encode::write_named(&mut *writer, &jsoned).map_err(|err| Error::from(err))
+					}
+				};
+				state.result = Some(result);
+			}
 
 			waker.wake();
 		});
+
+		Poll::Pending
+	}
+}
+
+#[must_use = "futures do nothing unless polled"]
+pub struct ReceiveFuture<T> {
+	shared_state: Arc<Mutex<SharedState<T>>>,
+	value: Arc<Mutex<Option<Result<T, Error>>>>,
+}
+
+impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for ReceiveFuture<T> {
+	type Output = Result<T, Error>;
+
+	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+		{
+			let mut value = self.value.lock().unwrap();
+			if let Some(value) = value.take() {
+				return Poll::Ready(value);
+			}
+		}
+
+		let waker = cx.waker().clone();
+		{
+			let mut shared_state = self.shared_state.lock().unwrap();
+			shared_state.waker.replace(waker.clone());
+		}
+		recv(self.shared_state.clone(), waker);
 
 		Poll::Pending
 	}
@@ -92,68 +123,75 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
 	type Output = Result<T, Error>;
 
 	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-		let mut value = self.value.lock().unwrap();
-		if value.is_some() {
-			return Poll::Ready(value.take().unwrap());
+		{
+			let mut value = self.value.lock().unwrap();
+			if let Some(value) = value.take() {
+				return Poll::Ready(value);
+			}
 		}
-
-		let mut shared_state = self.shared_state.lock().unwrap();
 
 		let waker = cx.waker().clone();
-		if let Some(req_id) = self.req_id {
-			shared_state
-				.requests
-				.insert(req_id, (self.value.clone(), Some(waker.clone())));
-		} else {
-			shared_state.waker = Some(waker.clone());
-		}
-
 		{
-			if shared_state.reader.try_lock().is_err() {
-				return Poll::Pending;
+			let mut shared_state = self.shared_state.lock().unwrap();
+			if let Some(req_id) = self.req_id {
+				shared_state
+					.requests
+					.insert(req_id, (self.value.clone(), Some(waker.clone())));
+			} else {
+				return Poll::Ready(Err(Error::text("Message does not contain an req_id.")));
 			}
 		}
-
-		let reader = shared_state.reader.clone();
-		let moved_state = self.shared_state.clone();
-		std::thread::spawn(move || {
-			let mut reader = reader.lock().unwrap();
-			let response: Result<T, _> = rmp_serde::from_read(&mut *reader);
-			let mut moved_state = moved_state.lock().unwrap();
-
-			if let Err(err) = response {
-				close_connection(&moved_state, Error::from(err));
-				return;
-			}
-
-			let response = response.unwrap();
-
-			match response.to() {
-				Some(to) => {
-					println!("message is response to {}", to);
-
-					let (value, other_waker) = moved_state.requests.remove(&to).unwrap();
-					let mut value = value.lock().unwrap();
-					*value = Some(Ok(response));
-					if let Some(other_waker) = other_waker {
-						other_waker.wake();
-					}
-				}
-				None => {
-					{
-						let mut value = moved_state.value.lock().unwrap();
-						*value = Some(Ok(response));
-					}
-					if let Some(other_waker) = moved_state.waker.take() {
-						other_waker.wake();
-					}
-				}
-			}
-			waker.wake();
-		});
+		recv(self.shared_state.clone(), waker);
 
 		Poll::Pending
 	}
+}
+
+fn recv<T>(shared_state: Arc<Mutex<SharedState<T>>>, waker: Waker)
+	where T: 'static + DeserializeOwned + Serialize + Send + Requestable {
+	let mut shared_state_g = shared_state.lock().unwrap();
+
+	{
+		if shared_state_g.reader.try_lock().is_err() {
+			return;
+		}
+	}
+
+	let reader = shared_state_g.reader.clone();
+	let moved_state = shared_state.clone();
+	std::thread::spawn(move || {
+		let mut reader = reader.lock().unwrap();
+		let response: Result<T, _> = rmp_serde::from_read(&mut *reader);
+		let mut moved_state = moved_state.lock().unwrap();
+
+		if let Err(err) = response {
+			close_connection(&moved_state, Error::from(err));
+			return;
+		}
+
+		let response = response.unwrap();
+
+		match response.to() {
+			Some(to) => {
+				let (value, other_waker) = moved_state.requests.remove(&to).unwrap();
+				let mut value = value.lock().unwrap();
+				*value = Some(Ok(response));
+				if let Some(other_waker) = other_waker {
+					other_waker.wake();
+				}
+			}
+			None => {
+				{
+					let mut value = moved_state.value.lock().unwrap();
+					*value = Some(Ok(response));
+				}
+				if let Some(other_waker) = moved_state.waker.take() {
+					other_waker.wake();
+				}
+			}
+		}
+		waker.wake();
+	});
 }
 
 fn close_connection<T>(shared_state: &SharedState<T>, err: Error) {
@@ -184,7 +222,6 @@ where
 }
 
 impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Connection<T> {
-	// TODO: send should also return future
 	pub fn send(&mut self, message: T) -> impl Future<Output = Result<(), Error>> {
 		let shared_state = self.shared_state.lock().unwrap();
 		let state = SendState {
@@ -197,17 +234,18 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Connection<
 			waker: None,
 		}
 	}
+
 	pub fn recv(&mut self) -> impl Future<Output = Result<T, Error>> {
 		let value = Arc::new(Mutex::new(None));
 		let mut shared_state = self.shared_state.lock().unwrap();
 		shared_state.value = value.clone();
 
-		ResponseFuture {
+		ReceiveFuture {
 			shared_state: self.shared_state.clone(),
 			value: value,
-			req_id: None,
 		}
 	}
+
 	pub fn request(&mut self, message: T) -> impl Future<Output = Result<T, Error>> {
 		let value = Arc::new(Mutex::new(None));
 
@@ -218,7 +256,6 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Connection<
 			}
 		}
 
-		// TODO: request future should error if no req_id
 		let future = ResponseFuture {
 			shared_state: self.shared_state.clone(),
 			value: value,
@@ -227,7 +264,6 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Connection<
 
 		let send_future = self.send(message);
 
-		// TODO: make this part of the future
 		return async {
 			let res = send_future.await;
 			if res.is_ok() {
