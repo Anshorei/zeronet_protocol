@@ -58,14 +58,14 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
 
 			// TODO: add timeout for pending requests
 
-			if let value = state.value.take() {
+			if let Some(value) = state.value.take() {
 				let jsoned = match serde_json::to_value(value) {
 					Ok(json) => json,
 					Err(err) => {
 						state.result = Some(Err(err.into()));
 						waker.wake();
 						return;
-					},
+					}
 				};
 				let value: Result<Value, _> = serde_json::from_value(jsoned);
 				let result = match value {
@@ -148,8 +148,10 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
 }
 
 fn recv<T>(shared_state: Arc<Mutex<SharedState<T>>>, waker: Waker)
-	where T: 'static + DeserializeOwned + Serialize + Send + Requestable {
-	let mut shared_state_g = shared_state.lock().unwrap();
+where
+	T: 'static + DeserializeOwned + Serialize + Send + Requestable,
+{
+	let shared_state_g = shared_state.lock().unwrap();
 
 	{
 		if shared_state_g.reader.try_lock().is_err() {

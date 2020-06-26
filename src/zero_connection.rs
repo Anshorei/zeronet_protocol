@@ -155,3 +155,119 @@ impl ZeroConnection {
 		self.next_req_id - 1
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::ZeroConnection;
+	use crate::address::Address;
+	use futures::executor::block_on;
+	use futures::join;
+	use std::io::{Error, ErrorKind, Read, Result, Write};
+	use std::sync::mpsc::{channel, Receiver, Sender};
+
+	struct ChannelWriter {
+		tx: Sender<Vec<u8>>,
+		buffer: Option<Vec<u8>>,
+	}
+
+	impl ChannelWriter {
+		fn new(tx: Sender<Vec<u8>>) -> ChannelWriter {
+			ChannelWriter { tx, buffer: None }
+		}
+	}
+
+	impl Write for ChannelWriter {
+		fn write(&mut self, buf: &[u8]) -> Result<usize> {
+			let mut buffer = match self.buffer.take() {
+				Some(buffer) => buffer,
+				None => vec![],
+			};
+			buffer.append(&mut buf.to_vec());
+			println!("write: {:?}", &buffer);
+			self.buffer = Some(buffer);
+
+			// TODO: rmp-serde does not flush the write
+			// remove this once this is corrected
+			self.flush();
+
+			return Ok(buf.len());
+		}
+		fn flush(&mut self) -> Result<()> {
+			if let Some(buffer) = self.buffer.take() {
+				self.tx.send(buffer);
+			}
+			Ok(())
+		}
+	}
+
+	struct ChannelReader {
+		rx: Receiver<Vec<u8>>,
+		buffer: Option<Vec<u8>>,
+	}
+
+	impl ChannelReader {
+		fn new(rx: Receiver<Vec<u8>>) -> ChannelReader {
+			ChannelReader { rx, buffer: None }
+		}
+	}
+
+	impl Read for ChannelReader {
+		fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+			let mut buffer = match self.buffer.take() {
+				Some(buffer) => buffer,
+				None => vec![],
+			};
+			while let Ok(mut res) = self.rx.try_recv() {
+				buffer.append(&mut res);
+			}
+			if buffer.len() == 0 {
+				return Err(Error::from(ErrorKind::Interrupted));
+			}
+			println!("read: {:?}", &buffer);
+			let length = std::cmp::min(buf.len(), buffer.len());
+			println!(
+				"Bytes read: {} (buf: {}, buffer: {})",
+				length,
+				buf.len(),
+				buffer.len()
+			);
+			let mut iterator = buffer.into_iter();
+			for i in 0..length {
+				if let Some(byte) = iterator.next() {
+					buf[i] = byte;
+				}
+			}
+			self.buffer = Some(iterator.collect());
+			Ok(length)
+		}
+	}
+
+	fn create_pair() -> (ZeroConnection, ZeroConnection) {
+		let (tx1, rx1) = channel();
+		let (tx2, rx2) = channel();
+		let conn1 = ZeroConnection::new(
+			Address::OnionV2("mock".to_string(), 0),
+			Box::new(ChannelReader::new(rx2)),
+			Box::new(ChannelWriter::new(tx1)),
+		);
+		let conn2 = ZeroConnection::new(
+			Address::OnionV2("mock".to_string(), 0),
+			Box::new(ChannelReader::new(rx1)),
+			Box::new(ChannelWriter::new(tx2)),
+		);
+		(conn1.unwrap(), conn2.unwrap())
+	}
+
+	#[test]
+	fn test_connection() {
+		let (mut server, mut client) = create_pair();
+		let request = client.request("ping", String::new());
+		std::thread::spawn(move || {
+			let result = block_on(request);
+			println!("{:?}", result);
+		});
+		let request = block_on(server.recv());
+		println!("{:?}", request);
+		assert!(request.is_ok());
+	}
+}

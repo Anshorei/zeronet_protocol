@@ -1,10 +1,8 @@
 use crate::error::Error;
-use serde::{Deserialize, Serialize};
-use std::io::{Read, Write, Bytes};
-use std::net::{TcpStream, SocketAddr, ToSocketAddrs};
-use base64::{encode, decode};
 use koibumi_base32 as base32;
 use std::convert::TryInto;
+use std::io::{Read, Write};
+use std::net::{SocketAddr, TcpStream};
 
 #[derive(Debug)]
 pub struct ParseError {
@@ -105,19 +103,29 @@ impl Address {
 	/// let bytes = vec![127, 0, 0, 1, 225, 16];
 	/// let address = Address::unpack(&bytes).unwrap();
 	/// assert_eq!(address.to_string(), "127.0.0.1:4321".to_string());
+	///
+	/// let bytes =  vec![196, 196, 220, 174, 135, 5, 208, 57, 132, 188, 225, 16];
+	/// let address =  Address::unpack(&bytes).unwrap();
+	/// assert_eq!(address.to_string(), "ytcnzluhaxidtbf4.onion:4321".to_string());
+	/// // TODO: test IPV6
 	/// ```
-	/// TODO: test unpack IPV6 and OnionV2
 	pub fn unpack(bytes: &Vec<u8>) -> Result<Address, Error> {
 		match bytes.len() {
 			6 => {
 				let mut array = [0u8; 4];
 				array.copy_from_slice(&bytes[..4]);
-				Ok(Address::IPV4(array, u16::from_le_bytes(bytes[4..6].try_into().unwrap())))
-			},
+				Ok(Address::IPV4(
+					array,
+					u16::from_le_bytes(bytes[4..6].try_into().unwrap()),
+				))
+			}
 			18 => {
 				let mut array = [0u8; 16];
 				array.copy_from_slice(&bytes[..16]);
-				Ok(Address::IPV6(array, u16::from_le_bytes(bytes[16..18].try_into().unwrap())))
+				Ok(Address::IPV6(
+					array,
+					u16::from_le_bytes(bytes[16..18].try_into().unwrap()),
+				))
 			}
 			12 => {
 				let port = u16::from_le_bytes(bytes[10..12].try_into().unwrap());
@@ -125,7 +133,7 @@ impl Address {
 				array.copy_from_slice(&bytes[..10]);
 				let address = base32::encode(&array)?;
 				Ok(Address::OnionV2(address, port))
-			},
+			}
 			// 42 => // TODO: Onion V3
 			_ => Err(Error::empty()),
 		}
@@ -154,18 +162,18 @@ impl Address {
 				let mut bytes = address.to_vec();
 				bytes.append(&mut port.to_le_bytes().to_vec());
 				bytes
-			},
+			}
 			Address::IPV6(address, port) => {
 				let mut bytes = address.to_vec();
 				bytes.append(&mut port.to_le_bytes().to_vec());
 				bytes
-			},
+			}
 			Address::OnionV2(address, port) => {
 				let address = address.to_lowercase();
 				let mut bytes = base32::decode(address).unwrap();
 				bytes.append(&mut port.to_le_bytes().to_vec());
 				bytes
-			},
+			}
 			_ => vec![],
 		}
 	}
@@ -183,9 +191,7 @@ impl Address {
 				"{}.{}.{}.{}:{}",
 				address[0], address[1], address[2], address[3], port
 			),
-			Address::OnionV2(address, port) => format!(
-				"{}.onion:{}", address, port
-			),
+			Address::OnionV2(address, port) => format!("{}.onion:{}", address, port),
 			_ => "not implemented".to_string(),
 		}
 	}
@@ -254,7 +260,7 @@ impl Address {
 }
 
 #[cfg(test)]
-#[cfg_attr(tarpaulin, skip)]
+#[cfg_attr(tarpaulin, ignore)]
 mod tests {
 	use super::*;
 	use serde_bytes::ByteBuf;

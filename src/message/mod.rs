@@ -69,15 +69,6 @@ impl ZeroMessage {
 		};
 		ZeroMessage::Response(response)
 	}
-	pub fn is_response(&self) -> bool {
-		match self {
-			ZeroMessage::Response(_) => true,
-			_ => false,
-		}
-	}
-	pub fn is_request(&self) -> bool {
-		!self.is_response()
-	}
 	pub fn body<V: DeserializeOwned + Serialize>(self) -> Result<V, Error> {
 		match self {
 			ZeroMessage::Response(res) => res.body(),
@@ -86,6 +77,18 @@ impl ZeroMessage {
 	}
 }
 
+/// ```
+/// use zeronet_protocol::message::ZeroMessage;
+/// use zeronet_protocol::requestable::Requestable;
+///
+/// let request = ZeroMessage::request("handshake", 0, "body".to_string());
+/// assert!(request.is_request());
+/// assert!(!request.is_response());
+///
+/// let response = ZeroMessage::response(0, "body".to_string());
+/// assert!(response.is_response());
+/// assert!(!response.is_request());
+/// ```
 impl Requestable for ZeroMessage {
 	fn req_id(&self) -> Option<usize> {
 		match self {
@@ -102,9 +105,10 @@ impl Requestable for ZeroMessage {
 }
 
 #[cfg(test)]
-#[cfg_attr(tarpaulin, skip)]
+#[cfg_attr(tarpaulin, ignore)]
 mod tests {
 	use super::ZeroMessage;
+	use crate::requestable::Requestable;
 
 	fn des(text: &str) -> Result<ZeroMessage, serde_json::error::Error> {
 		serde_json::from_str(text)
@@ -152,7 +156,7 @@ mod tests {
 			}
 		}"#;
 		let msg = des(text).unwrap();
-		assert_eq!(msg.is_request(), true);
+		assert!(msg.is_request());
 		assert_eq!(rmpd(rmps(&msg)), msg);
 
 		let bytes = vec![

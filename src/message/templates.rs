@@ -1,8 +1,8 @@
 use crate::util::is_default;
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::fmt::{Debug, Formatter};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(default)]
@@ -96,13 +96,17 @@ pub struct AnnouncePeers {
 
 impl Debug for AnnouncePeers {
 	fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-		let iterator = self.ip_v4.iter()
+		let iterator = self
+			.ip_v4
+			.iter()
 			.chain(self.ip_v6.iter())
 			.chain(self.onion_v2.iter())
 			.chain(self.onion_v3.iter())
 			.chain(self.i2p_b32.iter())
 			.chain(self.loki.iter());
-		let strings: Vec<String> = iterator.map(|ip| crate::address::Address::unpack(ip).unwrap().to_string()).collect();
+		let strings: Vec<String> = iterator
+			.map(|ip| crate::address::Address::unpack(ip).unwrap().to_string())
+			.collect();
 		write!(f, "[{}]", strings.join(", "))
 	}
 }

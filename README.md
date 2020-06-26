@@ -1,3 +1,7 @@
+![Build](http://localhost:43110/1H3ct93gHL9BgtTnyrqJrkjn4NdociFFTn/img/build.svg)
+![Tests](http://localhost:43110/1H3ct93gHL9BgtTnyrqJrkjn4NdociFFTn/img/tests.svg)
+![Coverage](http://localhost:43110/1H3ct93gHL9BgtTnyrqJrkjn4NdociFFTn/img/coverage.svg)
+
 # ZeroNet Protocol Rust Library
 [Documentation](http://localhost:43110/1H3ct93gHL9BgtTnyrqJrkjn4NdociFFTn/doc/zeronet_protocol)
 

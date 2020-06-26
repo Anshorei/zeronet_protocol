@@ -5,14 +5,14 @@ pub trait Requestable {
 	fn is_request(&self) -> bool {
 		match self.req_id() {
 			Some(_) => true,
-			_ => false,
+			None => false,
 		}
 	}
 
 	fn is_response(&self) -> bool {
 		match self.to() {
 			Some(_) => true,
-			_ => false,
+			None => false,
 		}
 	}
 }
