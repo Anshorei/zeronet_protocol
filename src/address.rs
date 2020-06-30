@@ -80,16 +80,16 @@ impl Address {
 				.split(".")
 				.map(|byte| byte.to_string().parse::<u8>())
 				.collect();
-			let mut address = [0u8; 4];
+			let mut address_bytes = [0u8; 4];
 			if bytes.len() != 4 {
-				return Err(ParseError::text("Wrong length for IPV4 address"));
+				return Err(ParseError::text(&format!("Address '{}' was detected as IPV4 but has the wrong length", address)));
 			}
 			for (i, byte) in bytes.into_iter().enumerate() {
-				address[i] = byte?
+				address_bytes[i] = byte?
 			}
 			if let Some(port) = parts.get(1) {
 				let port = port.to_string().parse::<u16>()?;
-				return Ok(Address::IPV4(address, port));
+				return Ok(Address::IPV4(address_bytes, port));
 			}
 		}
 
@@ -135,7 +135,7 @@ impl Address {
 				Ok(Address::OnionV2(address, port))
 			}
 			// 42 => // TODO: Onion V3
-			_ => Err(Error::empty()),
+			_ => Err(Error::todo()),
 		}
 	}
 
@@ -201,7 +201,7 @@ impl Address {
 				let socket = TcpStream::connect(self.to_string())?;
 				return Ok((Box::new(socket.try_clone()?), Box::new(socket)));
 			}
-			_ => Err(Error::empty()),
+			_ => Err(Error::todo()),
 		}
 	}
 
@@ -292,5 +292,19 @@ mod tests {
 			serialized_bytes, serialized_bytebuf_json,
 			"Bytes and JSON equivalent are serialized the same"
 		);
+	}
+}
+
+impl std::fmt::Display for Address {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		let address_type = match self {
+			Address::IPV4(_, _) => "ipv4",
+			Address::IPV6(_, _) => "ipv6",
+			Address::OnionV2(_, _) => "onionv2",
+			Address::OnionV3(_, _) => "onionv3",
+			Address::I2PB32(_, _) => "i2pb32",
+			Address::Loki(_, _) => "loki",
+		};
+		write!(f, "{}://{}", address_type, self.to_string())
 	}
 }

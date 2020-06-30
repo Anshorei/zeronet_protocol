@@ -5,14 +5,16 @@ pub enum Error {
 	InvalidData(String),
 	Io(String),
 	Other(String),
+	ConnectionFailure,
 	ParseError,
 	EncodeError,
-	Empty,
+	DecodeError,
+	NotYetImplemented,
 }
 
 impl Error {
-	pub fn empty() -> Error {
-		Error::Empty
+	pub fn todo() -> Error {
+		Error::NotYetImplemented
 	}
 	pub fn text(message: &str) -> Error {
 		Error::Other(message.to_string())
@@ -57,7 +59,7 @@ impl From<std::sync::mpsc::RecvError> for Error {
 
 impl From<std::io::Error> for Error {
 	fn from(err: std::io::Error) -> Error {
-		Error::text(&format!("{:?}", err))
+		Error::text(&format!("Io Error: {:?}", err))
 	}
 }
 
@@ -69,7 +71,7 @@ impl From<ParseError> for Error {
 
 impl From<base64::DecodeError> for Error {
 	fn from(_: base64::DecodeError) -> Error {
-		Error::empty()
+		Error::DecodeError
 	}
 }
 

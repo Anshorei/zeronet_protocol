@@ -74,7 +74,7 @@ impl ZeroConnection {
 
 	/// Creates a new ZeroConnection from a given address
 	pub fn from_address(address: Address) -> Result<ZeroConnection, Error> {
-		let (reader, writer) = address.get_pair().unwrap();
+		let (reader, writer) = address.get_pair()?;
 		ZeroConnection::new(address, reader, writer)
 	}
 
@@ -87,12 +87,8 @@ impl ZeroConnection {
 
 			let body = crate::message::templates::Handshake::default();
 			let message = ZeroMessage::request("handshake", connection.req_id(), body);
-			let result = connection.connection.request(message).await;
-			if result.is_ok() {
-				return Ok(connection);
-			} else {
-				return Err(Error::empty());
-			}
+			let result = connection.connection.request(message).await?;
+			Ok(connection)
 		};
 	}
 
@@ -105,7 +101,7 @@ impl ZeroConnection {
 		return async {
 			match result.await {
 				Err(err) => Err(err),
-				Ok(ZeroMessage::Response(_)) => Err(Error::empty()),
+				Ok(ZeroMessage::Response(_)) => Err(Error::todo()),
 				Ok(ZeroMessage::Request(req)) => Ok(req),
 			}
 		};
@@ -140,7 +136,7 @@ impl ZeroConnection {
 			match result.await {
 				Err(err) => Err(err),
 				Ok(ZeroMessage::Response(res)) => Ok(res),
-				Ok(ZeroMessage::Request(_)) => Err(Error::empty()),
+				Ok(ZeroMessage::Request(_)) => Err(Error::todo()),
 			}
 		};
 	}

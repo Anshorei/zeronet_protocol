@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 use std::fmt::{Debug, Formatter};
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(default)]
@@ -82,15 +83,18 @@ pub struct AnnounceResponse {
 #[derive(Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct AnnouncePeers {
-	#[serde(rename = "ipv4", alias = "ip4")]
+	#[serde(rename = "ipv4", alias = "ip4", skip_serializing_if = "is_default")]
 	pub ip_v4: Vec<ByteBuf>,
-	#[serde(rename = "ipv6")]
+	#[serde(rename = "ipv6", skip_serializing_if = "is_default")]
 	pub ip_v6: Vec<ByteBuf>,
-	#[serde(rename = "onion")]
+	#[serde(rename = "onion", skip_serializing_if = "is_default")]
 	pub onion_v2: Vec<ByteBuf>,
 	// TODO: use correct length for next two
+	#[serde(skip_serializing_if = "is_default")]
 	pub onion_v3: Vec<ByteBuf>, // 42 bytes?
+	#[serde(skip_serializing_if = "is_default")]
 	pub i2p_b32: Vec<ByteBuf>,
+	#[serde(skip_serializing_if = "is_default")]
 	pub loki: Vec<ByteBuf>,
 }
 
@@ -109,6 +113,125 @@ impl Debug for AnnouncePeers {
 			.collect();
 		write!(f, "[{}]", strings.join(", "))
 	}
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct GetFile {
+	pub site: String,
+	pub inner_path: String,
+	pub location: usize,
+	#[serde(skip_serializing_if = "is_default")]
+	pub file_size: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct GetFileResponse {
+	pub body: ByteBuf,
+	pub location: usize,
+	pub size: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct StreamFile {
+	pub inner_path: String,
+	pub size: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct StreamFileResponse {
+	pub stream_bytes: usize,
+}
+
+pub struct Pex {
+	pub site: String,
+	pub peers: Vec<ByteBuf>,
+	pub peers_onion: Vec<ByteBuf>,
+	pub need: usize,
+}
+
+pub struct PexResponse {
+	pub peers: Vec<ByteBuf>,
+	pub peers_onion: Vec<ByteBuf>,
+}
+
+pub struct UpdateFile {
+	pub site: String,
+	pub inner_path: String,
+	pub body: ByteBuf,
+	pub diffs: Vec<Diff>,
+}
+
+pub struct Diff {
+	pub opcode: String,
+	pub diff: String,
+}
+
+pub struct UpdateFileResponse {
+	pub ok: bool,
+}
+
+pub struct ListModified {
+	pub site: String,
+	pub since: usize,
+}
+
+pub struct ListModifiedResponse {
+	pub modified_files: HashMap<String, usize>,
+}
+
+pub struct GetHashfield {
+	pub site: String,
+}
+
+pub struct GetHashfieldResponse {
+	pub hashfield_raw: ByteBuf,
+}
+
+pub struct SetHashfield {
+	pub site: String,
+	pub hashfield_raw: ByteBuf,
+}
+
+pub struct SetHashfieldResponse {
+	pub ok: bool,
+}
+
+pub struct FindHashIds {
+	pub site: String,
+	pub hash_ids: Vec<usize>,
+}
+
+pub struct FindHashIdsResponse {
+	pub peers: HashMap<usize, Vec<ByteBuf>>,
+	pub peers_onion: HashMap<usize, Vec<ByteBuf>>,
+}
+
+pub struct Checkport {
+	pub port: u16,
+}
+
+pub struct CheckportResponse {
+	pub status: String,
+	pub ip_external: String,
+}
+
+pub struct GetPieceFields {
+	pub site: String,
+}
+
+// TODO: do piecefields properly
+pub struct GetPieceFieldsResponse {
+	pub piecefields_packed: ByteBuf,
+}
+
+// TODO: do piecefields properly
+pub struct SetPieceFields {
+	pub site: String,
+	pub piecefields_packed: ByteBuf,
+}
+
+pub struct SetPieceFieldsResponse {
+	pub ok: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
