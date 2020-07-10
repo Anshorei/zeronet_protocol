@@ -1,12 +1,11 @@
 ![Build](http://localhost:43110/1H3ct93gHL9BgtTnyrqJrkjn4NdociFFTn/img/build.svg)
 ![Tests](http://localhost:43110/1H3ct93gHL9BgtTnyrqJrkjn4NdociFFTn/img/tests.svg)
-![Coverage](http://localhost:43110/1H3ct93gHL9BgtTnyrqJrkjn4NdociFFTn/img/coverage.svg)
+[![Coverage](http://localhost:43110/1H3ct93gHL9BgtTnyrqJrkjn4NdociFFTn/img/coverage.svg)](http://localhost:43110/1H3ct93gHL9BgtTnyrqJrkjn4NdociFFTn/coverage/html)
+[![Documentation](http://localhost:43110/1H3ct93gHL9BgtTnyrqJrkjn4NdociFFTn/img/doc.svg)](http://localhost:43110/1H3ct93gHL9BgtTnyrqJrkjn4NdociFFTn/doc/zeronet_protocol)
 
 # ZeroNet Protocol Rust Library
-[Documentation](http://localhost:43110/1H3ct93gHL9BgtTnyrqJrkjn4NdociFFTn/doc/zeronet_protocol)
 
-
-# Roadmap
+## Roadmap
 - [x] Implementation covers basic use-cases
 - [x] Make send and receive async
 - [ ] Parse addresses
