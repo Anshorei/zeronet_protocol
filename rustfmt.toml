@@ -1,3 +1,2 @@
-hard_tabs = true
 tab_spaces = 2
-struct_field_align_threshold = 0
+struct_field_align_threshold = 20

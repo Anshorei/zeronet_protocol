@@ -1,6 +1,6 @@
 [package]
 name = "zeronet_protocol"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Ansho Rei <anshorei@zeroid.bit>"]
 edition = "2018"
 

@@ -9,17 +9,17 @@ use std::collections::HashMap;
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum Value {
-	Null,
-	Bool(bool),
-	Number(Number),
-	String(String),
-	Bytes(ByteBuf),
-	Array(Vec<Value>),
-	Object(HashMap<String, Value>),
+  Null,
+  Bool(bool),
+  Number(Number),
+  String(String),
+  Bytes(ByteBuf),
+  Array(Vec<Value>),
+  Object(HashMap<String, Value>),
 }
 
 impl Default for Value {
-	fn default() -> Self {
-		Value::Null
-	}
+  fn default() -> Self {
+    Value::Null
+  }
 }

@@ -7,7 +7,7 @@ pub mod util;
 pub mod zero_connection;
 
 pub use address::Address;
-pub use message::ZeroMessage;
-pub use zero_connection::ZeroConnection;
 pub use error::Error;
 pub use message::templates;
+pub use message::ZeroMessage;
+pub use zero_connection::ZeroConnection;
