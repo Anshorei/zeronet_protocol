@@ -179,7 +179,6 @@ mod tests {
         None => vec![],
       };
       buffer.append(&mut buf.to_vec());
-      println!("write: {:?}", &buffer);
       self.buffer = Some(buffer);
 
       // TODO: rmp-serde does not flush the write
@@ -219,14 +218,7 @@ mod tests {
       if buffer.len() == 0 {
         return Err(Error::from(ErrorKind::Interrupted));
       }
-      println!("read: {:?}", &buffer);
       let length = std::cmp::min(buf.len(), buffer.len());
-      println!(
-        "Bytes read: {} (buf: {}, buffer: {})",
-        length,
-        buf.len(),
-        buffer.len()
-      );
       let mut iterator = buffer.into_iter();
       for i in 0..length {
         if let Some(byte) = iterator.next() {
@@ -260,10 +252,8 @@ mod tests {
     let request = client.request("ping", String::new());
     std::thread::spawn(move || {
       let result = block_on(request);
-      println!("{:?}", result);
     });
     let request = block_on(server.recv());
-    println!("{:?}", request);
     assert!(request.is_ok());
   }
 }
