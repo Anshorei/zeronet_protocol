@@ -101,7 +101,7 @@ impl ZeroConnection {
     return async {
       match result.await {
         Err(err) => Err(err),
-        Ok(ZeroMessage::Response(_)) => Err(Error::todo()),
+        Ok(ZeroMessage::Response(_)) => Err(Error::UnexpectedResponse),
         Ok(ZeroMessage::Request(req)) => Ok(req),
       }
     };
@@ -136,7 +136,7 @@ impl ZeroConnection {
       match result.await {
         Err(err) => Err(err),
         Ok(ZeroMessage::Response(res)) => Ok(res),
-        Ok(ZeroMessage::Request(_)) => Err(Error::todo()),
+        Ok(ZeroMessage::Request(_)) => Err(Error::UnexpectedRequest),
       }
     };
   }
@@ -183,7 +183,7 @@ mod tests {
 
       // TODO: rmp-serde does not flush the write
       // remove this once this is corrected
-      self.flush();
+      self.flush()?;
 
       return Ok(buf.len());
     }

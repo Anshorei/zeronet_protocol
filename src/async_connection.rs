@@ -138,7 +138,7 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
           .requests
           .insert(req_id, (self.value.clone(), Some(waker.clone())));
       } else {
-        return Poll::Ready(Err(Error::text("Message does not contain an req_id.")));
+        return Poll::Ready(Err(Error::MissingReqId));
       }
     }
     recv(self.shared_state.clone(), waker);
@@ -167,7 +167,8 @@ where
     let mut moved_state = moved_state.lock().unwrap();
 
     if let Err(err) = response {
-      close_connection(&moved_state, Error::from(err));
+      println!("Connection closed: {:?}", err);
+      close_connection(&moved_state);
       return;
     }
 
@@ -196,12 +197,12 @@ where
   });
 }
 
-fn close_connection<T>(shared_state: &SharedState<T>, err: Error) {
+fn close_connection<T>(shared_state: &SharedState<T>) {
   for (value, waker) in shared_state.requests.values() {
     let mut value = value.lock().unwrap();
     match *value {
       None => {
-        *value = Some(Err(err.clone()));
+        *value = Some(Err(Error::ConnectionClosed));
       }
       Some(_) => {}
     }
@@ -210,7 +211,7 @@ fn close_connection<T>(shared_state: &SharedState<T>, err: Error) {
     }
   }
   let mut value = shared_state.value.lock().unwrap();
-  *value = Some(Err(err));
+  *value = Some(Err(Error::ConnectionClosed));
   if let Some(waker) = shared_state.waker.clone() {
     waker.wake();
   }

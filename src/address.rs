@@ -1,26 +1,38 @@
-use crate::error::Error;
 use koibumi_base32 as base32;
 use std::convert::TryInto;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
+use thiserror::Error as Error;
 
-#[derive(Debug)]
-pub struct ParseError {
-  text: String,
+// #[error("Error parsing address `{text}`")]
+// pub struct ParseError {
+//   text: String,
+// }
+
+#[derive(Debug, Error)]
+pub enum ParseError {
+  #[error("Error parsing int: `{0}`")]
+  ParseIntError(#[from] std::num::ParseIntError),
+  #[error("Address `{address}` has wrong length ({length}) for {expected}")]
+  WrongLength {
+    address: String,
+    length: usize,
+    expected: String,
+  },
+  #[error("Unrecognized address format")]
+  UnrecognizedAddressFormat,
 }
 
-impl ParseError {
-  fn text(text: &str) -> ParseError {
-    ParseError {
-      text: text.to_string(),
-    }
-  }
-}
-
-impl From<std::num::ParseIntError> for ParseError {
-  fn from(err: std::num::ParseIntError) -> ParseError {
-    ParseError::text(&format!("Error parsing int: {:?}", err))
-  }
+#[derive(Debug, Error)]
+pub enum AddressError {
+  #[error("Error unpacking address")]
+  UnpackError,
+  #[error("Error creating tcp stream read-write pair")]
+  TcpStreamError,
+  #[error("I/O Error: `{0}`")]
+  IoError(#[from] std::io::Error),
+  #[error("Error encoding as base32: `{0}`")]
+  Base32Encode(#[from] koibumi_base32::EncodeError),
 }
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -82,10 +94,11 @@ impl Address {
         .collect();
       let mut address_bytes = [0u8; 4];
       if bytes.len() != 4 {
-        return Err(ParseError::text(&format!(
-          "Address '{}' was detected as IPV4 but has the wrong length",
-          address
-        )));
+        return Err(ParseError::WrongLength {
+          address: address.to_string(),
+          length: bytes.len(),
+          expected: "ipv4".to_string(),
+        });
       }
       for (i, byte) in bytes.into_iter().enumerate() {
         address_bytes[i] = byte?
@@ -96,7 +109,7 @@ impl Address {
       }
     }
 
-    Err(ParseError::text("Unrecognized address format"))
+    Err(ParseError::UnrecognizedAddressFormat)
   }
 
   /// unpack
@@ -112,7 +125,7 @@ impl Address {
   /// assert_eq!(address.to_string(), "ytcnzluhaxidtbf4.onion:4321".to_string());
   /// // TODO: test IPV6
   /// ```
-  pub fn unpack(bytes: &Vec<u8>) -> Result<Address, Error> {
+  pub fn unpack(bytes: &Vec<u8>) -> Result<Address, AddressError> {
     match bytes.len() {
       6 => {
         let mut array = [0u8; 4];
@@ -138,7 +151,7 @@ impl Address {
         Ok(Address::OnionV2(address, port))
       }
       // 42 => // TODO: Onion V3
-      _ => Err(Error::todo()),
+      _ => Err(AddressError::UnpackError),
     }
   }
 
@@ -198,13 +211,13 @@ impl Address {
       _ => "not implemented".to_string(),
     }
   }
-  pub fn get_pair(&self) -> Result<(Box<dyn Read + Send>, Box<dyn Write + Send>), Error> {
+  pub fn get_pair(&self) -> Result<(Box<dyn Read + Send>, Box<dyn Write + Send>), AddressError> {
     match self {
       Address::IPV4(_, _) => {
         let socket = TcpStream::connect(self.to_string())?;
         return Ok((Box::new(socket.try_clone()?), Box::new(socket)));
       }
-      _ => Err(Error::todo()),
+      _ => Err(AddressError::TcpStreamError),
     }
   }
 
