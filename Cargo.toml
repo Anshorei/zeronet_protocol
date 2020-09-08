@@ -1,6 +1,6 @@
 [package]
 name = "zeronet_protocol"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Ansho Rei <anshorei@zeroid.bit>"]
 edition = "2018"
 description = "Async ZeroNet Protocol implementation in Rust"
@@ -20,9 +20,9 @@ serde_bytes = "0.11"
 rmp-serde = "0.14"
 rmpv = "0.4"
 rmp = "0.8.9"
-tokio = { version = "0.2.21", features = ["tcp", "dns"] }
+tokio = { version = "0.2.22", features = ["tcp", "dns"] }
 futures = "0.3.5"
 base64 = "0.12"
-koibumi-base32 = "*"
+koibumi-base32 = "0.0.1"
 itertools = "0.9"
 thiserror = "1.0"

@@ -31,8 +31,6 @@ pub enum AddressError {
   TcpStreamError,
   #[error("I/O Error: `{0}`")]
   IoError(#[from] std::io::Error),
-  #[error("Error encoding as base32: `{0}`")]
-  Base32Encode(#[from] koibumi_base32::EncodeError),
 }
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -147,7 +145,7 @@ impl Address {
         let port = u16::from_le_bytes(bytes[10..12].try_into().unwrap());
         let mut array = [0u8; 10];
         array.copy_from_slice(&bytes[..10]);
-        let address = base32::encode(&array)?;
+        let address = base32::encode(&array);
         Ok(Address::OnionV2(address, port))
       }
       // 42 => // TODO: Onion V3
