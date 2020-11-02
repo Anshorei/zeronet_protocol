@@ -5,7 +5,7 @@ tasks:
     command: |
       set -euo pipefail
       apt-get update
-      apt-get install --yes build-essential curl libssl-dev libcurl4-openssl-dev zip unzip jq
+      apt-get install --yes build-essential curl libssl-dev libcurl4-openssl-dev zip unzip jq git
 
   create_user:
     description: Create a user without root privileges.
@@ -22,10 +22,8 @@ tasks:
     command: |
       set -euo pipefail
       curl https://sh.rustup.rs -sSf |
-        sh -s -- -y --default-toolchain nightly
+        sh -s -- -y --default-toolchain nightly --component clippy --component rustfmt
       . $HOME/.cargo/env
-      rustup component add clippy
-      rustup component add rustfmt
       rm -rf "$(dirname "$(rustup which rustc)")/../share"
 
   install_tools:
@@ -40,10 +38,23 @@ tasks:
       export OPENSSL_INCLUDE_DIR="/usr/include/openssl"
       cargo install grcov
 
+  configure_registry:
+    description: Configure the Cratez registry
+    dependencies:
+      - install_rust
+    user: user
+    command: |
+      echo '[net]' >> ~/.cargo/config
+      echo 'git-fetch-with-cli = true' >> ~/.cargo/config
+      echo ''
+      echo '[registries]' >> ~/.cargo/config
+      echo 'cratez = { index = "http://localhost:43110/1CRAteZVBUYrnx8jj9x87A1zCnptrWFhPH/index" }' >> ~/.cargo/config
+
   fetch_crates:
     description: Download and build Rust packages used by the program.
     dependencies:
       - install_tools
+      - configure_registry
       - create_user
     user: user
     input_paths:
