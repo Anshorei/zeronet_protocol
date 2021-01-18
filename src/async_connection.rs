@@ -6,7 +6,6 @@ use serde::Serialize;
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::future::Future;
-use std::hash::Hash;
 use std::io::{Read, Write};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -20,6 +19,7 @@ pub struct SharedState<T: Requestable> {
   pub requests: HashMap<T::Key, (Arc<Mutex<Option<Result<T, Error>>>>, Option<Waker>)>,
   // Wakers for receivers
   pub wakers:   Vec<Waker>,
+  pub closed:   bool,
 }
 
 pub struct SendState<T> {
@@ -232,6 +232,8 @@ fn wake_one<T: Requestable>(shared_state: &mut SharedState<T>) {
 }
 
 fn close_connection<T: Requestable>(shared_state: &mut SharedState<T>) {
+  shared_state.closed = true;
+
   for (value, waker) in shared_state.requests.values() {
     let mut value = value.lock().unwrap();
     match *value {
@@ -263,6 +265,11 @@ impl<T> Connection<T>
 where
   T: 'static + DeserializeOwned + Serialize + Send + Requestable,
 {
+  pub fn is_closed(&self) -> bool {
+    let shared_state = self.shared_state.lock().unwrap();
+    return shared_state.closed;
+  }
+
   pub fn send(&mut self, message: T) -> impl Future<Output = Result<(), Error>> {
     let shared_state = self.shared_state.lock().unwrap();
     let state = SendState {

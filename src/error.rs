@@ -17,9 +17,9 @@ pub enum Error {
   #[error("Connection is closed")]
   ConnectionClosed,
   #[error("Error parsing address: `{0}`")]
-  ParseError(#[from] crate::address::ParseError),
+  ParseError(#[from] ParseError),
   #[error("Error doing something with address: `{0}`")]
-  AddressError(#[from] crate::address::AddressError),
+  AddressError(#[from] AddressError),
   #[error("Error decoding base64 `{0}`")]
   Base64Decode(#[from] base64::DecodeError),
   #[error("Error sending over mpsc channel")]

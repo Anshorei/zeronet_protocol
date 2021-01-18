@@ -23,8 +23,7 @@ pub struct ZeroConnection {
   ///	use zeronet_protocol::{ZeroConnection, ZeroMessage, Address};
   ///
   /// fn handle_connection(stream: TcpStream) {
-  /// 	let address = Address::from(stream.peer_addr().unwrap());
-  ///		let mut connection = ZeroConnection::new(address, Box::new(stream.try_clone().unwrap()), Box::new(stream)).unwrap();
+  ///		let mut connection = ZeroConnection::new(Box::new(stream.try_clone().unwrap()), Box::new(stream)).unwrap();
   ///		let request = block_on(connection.recv()).unwrap();
   ///
   ///		let body = "anything serializable".to_string();
@@ -43,7 +42,6 @@ pub struct ZeroConnection {
   /// ```
   pub connection:  Connection<ZeroMessage>,
   pub next_req_id: Arc<Mutex<usize>>,
-  pub address:     Address,
 }
 
 impl Clone for ZeroConnection {
@@ -51,7 +49,6 @@ impl Clone for ZeroConnection {
     Self {
       connection:  self.connection.clone(),
       next_req_id: self.next_req_id.clone(),
-      address:     self.address.clone(),
     }
   }
 }
@@ -59,7 +56,6 @@ impl Clone for ZeroConnection {
 impl ZeroConnection {
   /// Creates a new ZeroConnection from a given reader and writer
   pub fn new(
-    address: Address,
     reader: Box<dyn Read + Send>,
     writer: Box<dyn Write + Send>,
   ) -> Result<ZeroConnection, Error> {
@@ -69,14 +65,14 @@ impl ZeroConnection {
       requests: HashMap::new(),
       values:   Arc::new(Mutex::new(vec![])),
       wakers:   vec![],
+      closed:   false,
     };
     let conn = Connection {
       shared_state: Arc::new(Mutex::new(shared_state)),
     };
     let conn = ZeroConnection {
-      connection: conn,
+      connection:  conn,
       next_req_id: Arc::new(Mutex::new(0)),
-      address,
     };
 
     Ok(conn)
@@ -85,7 +81,7 @@ impl ZeroConnection {
   /// Creates a new ZeroConnection from a given address
   pub fn from_address(address: Address) -> Result<ZeroConnection, Error> {
     let (reader, writer) = address.get_pair()?;
-    ZeroConnection::new(address, reader, writer)
+    ZeroConnection::new(reader, writer)
   }
 
   /// Connect to an ip and port and perform the handshake,
@@ -202,9 +198,13 @@ mod tests {
 
       return Ok(buf.len());
     }
+
     fn flush(&mut self) -> Result<()> {
       if let Some(buffer) = self.buffer.take() {
-        self.tx.send(buffer);
+        self
+          .tx
+          .send(buffer)
+          .map_err(|_| Error::new(ErrorKind::NotConnected, "Could not send on channel"))?;
       }
       Ok(())
     }
@@ -249,12 +249,10 @@ mod tests {
     let (tx1, rx1) = channel();
     let (tx2, rx2) = channel();
     let conn1 = ZeroConnection::new(
-      Address::OnionV2("mock".to_string(), 0),
       Box::new(ChannelReader::new(rx2)),
       Box::new(ChannelWriter::new(tx1)),
     );
     let conn2 = ZeroConnection::new(
-      Address::OnionV2("mock".to_string(), 0),
       Box::new(ChannelReader::new(rx1)),
       Box::new(ChannelWriter::new(tx2)),
     );
@@ -291,6 +289,7 @@ mod tests {
     let result = block_on(server2.recv());
     assert!(result.is_ok());
   }
+
   #[test]
   fn multiple_clients() {
     let (mut server, mut client1) = create_pair();
