@@ -6,17 +6,18 @@ use serde::Serialize;
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::future::Future;
+use std::hash::Hash;
 use std::io::{Read, Write};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
-pub struct SharedState<T> {
+pub struct SharedState<T: Requestable> {
   pub reader:   Arc<Mutex<dyn Read + Send>>,
   pub writer:   Arc<Mutex<dyn Write + Send>>,
   pub values:   Arc<Mutex<Vec<Result<T, Error>>>>,
   // Wakers for senders
-  pub requests: HashMap<usize, (Arc<Mutex<Option<Result<T, Error>>>>, Option<Waker>)>,
+  pub requests: HashMap<T::Key, (Arc<Mutex<Option<Result<T, Error>>>>, Option<Waker>)>,
   // Wakers for receivers
   pub wakers:   Vec<Waker>,
 }
@@ -32,7 +33,10 @@ pub struct SendFuture<T> {
   pub waker: Option<Waker>,
 }
 
-impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for SendFuture<T> {
+impl<T> Future for SendFuture<T>
+where
+  T: 'static + DeserializeOwned + Serialize + Send + Requestable,
+{
   type Output = Result<(), Error>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -87,12 +91,18 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
 }
 
 #[must_use = "futures do nothing unless polled"]
-pub struct ReceiveFuture<T> {
+pub struct ReceiveFuture<T>
+where
+  T: 'static + DeserializeOwned + Serialize + Send + Requestable,
+{
   shared_state: Arc<Mutex<SharedState<T>>>,
   values:       Arc<Mutex<Vec<Result<T, Error>>>>,
 }
 
-impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for ReceiveFuture<T> {
+impl<T> Future for ReceiveFuture<T>
+where
+  T: 'static + DeserializeOwned + Serialize + Send + Requestable,
+{
   type Output = Result<T, Error>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -116,13 +126,19 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
 }
 
 #[must_use = "futures do nothing unless polled"]
-pub struct ResponseFuture<T> {
+pub struct ResponseFuture<T>
+where
+  T: 'static + DeserializeOwned + Serialize + Send + Requestable,
+{
   shared_state: Arc<Mutex<SharedState<T>>>,
   value:        Arc<Mutex<Option<Result<T, Error>>>>,
-  req_id:       Option<usize>,
+  req_id:       Option<T::Key>,
 }
 
-impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for ResponseFuture<T> {
+impl<T> Future for ResponseFuture<T>
+where
+  T: 'static + DeserializeOwned + Serialize + Send + Requestable,
+{
   type Output = Result<T, Error>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -138,7 +154,7 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
     let waker = cx.waker().clone();
     {
       let mut shared_state = self.shared_state.lock().unwrap();
-      if let Some(req_id) = self.req_id {
+      if let Some(req_id) = self.req_id.to_owned() {
         shared_state
           .requests
           .insert(req_id, (self.value.clone(), Some(waker.clone())));
@@ -206,7 +222,7 @@ where
   });
 }
 
-fn wake_one<T>(shared_state: &mut SharedState<T>) {
+fn wake_one<T: Requestable>(shared_state: &mut SharedState<T>) {
   if let Some(waker) = shared_state.wakers.pop() {
     return waker.wake();
   }
@@ -215,7 +231,7 @@ fn wake_one<T>(shared_state: &mut SharedState<T>) {
   }
 }
 
-fn close_connection<T>(shared_state: &mut SharedState<T>) {
+fn close_connection<T: Requestable>(shared_state: &mut SharedState<T>) {
   for (value, waker) in shared_state.requests.values() {
     let mut value = value.lock().unwrap();
     match *value {
@@ -243,7 +259,10 @@ where
   pub shared_state: Arc<Mutex<SharedState<T>>>,
 }
 
-impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Connection<T> {
+impl<T> Connection<T>
+where
+  T: 'static + DeserializeOwned + Serialize + Send + Requestable,
+{
   pub fn send(&mut self, message: T) -> impl Future<Output = Result<(), Error>> {
     let shared_state = self.shared_state.lock().unwrap();
     let state = SendState {

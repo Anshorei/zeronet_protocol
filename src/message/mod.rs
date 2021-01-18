@@ -90,13 +90,15 @@ impl ZeroMessage {
 /// assert!(!response.is_request());
 /// ```
 impl Requestable for ZeroMessage {
-  fn req_id(&self) -> Option<usize> {
+  type Key = usize;
+
+  fn req_id(&self) -> Option<Self::Key> {
     match self {
       ZeroMessage::Request(req) => Some(req.req_id),
       _ => None,
     }
   }
-  fn to(&self) -> Option<usize> {
+  fn to(&self) -> Option<Self::Key> {
     match self {
       ZeroMessage::Response(res) => Some(res.to),
       _ => None,
