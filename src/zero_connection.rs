@@ -42,9 +42,20 @@ pub struct ZeroConnection {
   /// }
   /// ```
   pub connection:  Connection<ZeroMessage>,
-  pub next_req_id: usize,
+  pub next_req_id: Arc<Mutex<usize>>,
   pub address:     Address,
 }
+
+impl Clone for ZeroConnection {
+  fn clone(&self) -> Self {
+    Self {
+      connection: self.connection.clone(),
+      next_req_id: self.next_req_id.clone(),
+      address: self.address.clone(),
+    }
+  }
+}
+
 
 impl ZeroConnection {
   /// Creates a new ZeroConnection from a given reader and writer
@@ -57,15 +68,15 @@ impl ZeroConnection {
       reader:   Arc::new(Mutex::new(reader)),
       writer:   Arc::new(Mutex::new(writer)),
       requests: HashMap::new(),
-      value:    Arc::new(Mutex::new(None)),
-      waker:    None,
+      values:    Arc::new(Mutex::new(vec![])),
+      wakers:    vec![],
     };
     let conn = Connection {
       shared_state: Arc::new(Mutex::new(shared_state)),
     };
     let conn = ZeroConnection {
       connection: conn,
-      next_req_id: 0,
+      next_req_id: Arc::new(Mutex::new(0)),
       address,
     };
 
@@ -143,22 +154,24 @@ impl ZeroConnection {
 
   /// Get the req_id of the last request
   pub fn last_req_id(&self) -> usize {
-    self.next_req_id - 1
+    let next_req_id = self.next_req_id.lock().unwrap();
+    *next_req_id - 1
   }
 
   fn req_id(&mut self) -> usize {
-    self.next_req_id += 1;
-    self.next_req_id - 1
+    let mut next_req_id = self.next_req_id.lock().unwrap();
+    *next_req_id += 1;
+    *next_req_id - 1
   }
 }
 
 #[cfg(test)]
 mod tests {
   use super::ZeroConnection;
-  use crate::address::Address;
+  use crate::{ZeroMessage, address::Address};
   use futures::executor::block_on;
   use futures::join;
-  use std::io::{Error, ErrorKind, Read, Result, Write};
+  use std::{collections::HashMap, io::{Error, ErrorKind, Read, Result, Write}};
   use std::sync::mpsc::{channel, Receiver, Sender};
 
   struct ChannelWriter {
@@ -255,5 +268,37 @@ mod tests {
     });
     let request = block_on(server.recv());
     assert!(request.is_ok());
+  }
+
+  #[test]
+  fn multiple_receivers() {
+    let (mut server1, mut client) = create_pair();
+    let mut server2 = server1.clone();
+
+    std::thread::spawn(move || {
+      block_on(client.connection.send(ZeroMessage::request("ping", 0, ())));
+      block_on(client.connection.send(ZeroMessage::request("ping", 1, ())));
+      block_on(client.connection.send(ZeroMessage::request("ping", 2, ())));
+      block_on(client.connection.send(ZeroMessage::request("ping", 3, ())));
+    });
+    std::thread::spawn(move || {
+      let result = block_on(server1.recv()).ok().unwrap();
+      let result = block_on(server1.recv()).ok().unwrap();
+    });
+    let result = block_on(server2.recv()).ok().unwrap();
+    let result = block_on(server2.recv());
+    assert!(result.is_ok());
+  }
+  #[test]
+  fn multiple_clients() {
+    let (mut server, mut client1) = create_pair();
+    let mut client2 = client1.clone();
+
+    std::thread::spawn(move || {
+      block_on(client1.request("ping", ()));
+    });
+    let result = block_on(server.recv()).ok().unwrap();
+    assert!(result.req_id == client2.last_req_id());
+
   }
 }

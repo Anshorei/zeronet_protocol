@@ -14,9 +14,11 @@ use std::task::{Context, Poll, Waker};
 pub struct SharedState<T> {
   pub reader:   Arc<Mutex<dyn Read + Send>>,
   pub writer:   Arc<Mutex<dyn Write + Send>>,
+  pub values:    Arc<Mutex<Vec<Result<T, Error>>>>,
+  // Wakers for senders
   pub requests: HashMap<usize, (Arc<Mutex<Option<Result<T, Error>>>>, Option<Waker>)>,
-  pub value:    Arc<Mutex<Option<Result<T, Error>>>>,
-  pub waker:    Option<Waker>,
+  // Wakers for receivers
+  pub wakers:    Vec<Waker>,
 }
 
 pub struct SendState<T> {
@@ -87,7 +89,7 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
 #[must_use = "futures do nothing unless polled"]
 pub struct ReceiveFuture<T> {
   shared_state: Arc<Mutex<SharedState<T>>>,
-  value:        Arc<Mutex<Option<Result<T, Error>>>>,
+  values:        Arc<Mutex<Vec<Result<T, Error>>>>,
 }
 
 impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for ReceiveFuture<T> {
@@ -95,8 +97,9 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     {
-      let mut value = self.value.lock().unwrap();
-      if let Some(value) = value.take() {
+      let mut values = self.values.lock().unwrap();
+      if let Some(value) = values.pop() {
+        wake_one(&mut self.shared_state.lock().unwrap());
         return Poll::Ready(value);
       }
     }
@@ -104,7 +107,7 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
     let waker = cx.waker().clone();
     {
       let mut shared_state = self.shared_state.lock().unwrap();
-      shared_state.waker.replace(waker.clone());
+      shared_state.wakers.push(waker.clone());
     }
     recv(self.shared_state.clone(), waker);
 
@@ -126,6 +129,8 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
     {
       let mut value = self.value.lock().unwrap();
       if let Some(value) = value.take() {
+        // Wake another future before returning
+        wake_one(&mut self.shared_state.lock().unwrap());
         return Poll::Ready(value);
       }
     }
@@ -155,6 +160,8 @@ where
 
   {
     if shared_state_g.reader.try_lock().is_err() {
+      // We assume another receiver is already reading
+      // and we don't have to wake any other futures
       return;
     }
   }
@@ -167,8 +174,7 @@ where
     let mut moved_state = moved_state.lock().unwrap();
 
     if let Err(err) = response {
-      println!("Connection closed: {:?}", err);
-      close_connection(&moved_state);
+      close_connection(&mut moved_state);
       return;
     }
 
@@ -185,19 +191,31 @@ where
       }
       None => {
         {
-          let mut value = moved_state.value.lock().unwrap();
-          *value = Some(Ok(response));
+          let mut values = moved_state.values.lock().unwrap();
+          values.push(Ok(response));
         }
-        if let Some(other_waker) = moved_state.waker.take() {
+        if let Some(other_waker) = moved_state.wakers.pop() {
           other_waker.wake();
+        } else {
+          // No receivers to wake,
+          // wake up current future instead
+          waker.wake();
         }
       }
     }
-    waker.wake();
   });
 }
 
-fn close_connection<T>(shared_state: &SharedState<T>) {
+fn wake_one<T>(shared_state: &mut SharedState<T>) {
+  if let Some(waker) = shared_state.wakers.pop() {
+    return waker.wake();
+  }
+  if let Some((_, Some(waker))) = shared_state.requests.values().next() {
+    return waker.clone().wake();
+  }
+}
+
+fn close_connection<T>(shared_state: &mut SharedState<T>) {
   for (value, waker) in shared_state.requests.values() {
     let mut value = value.lock().unwrap();
     match *value {
@@ -210,13 +228,14 @@ fn close_connection<T>(shared_state: &SharedState<T>) {
       waker.wake();
     }
   }
-  let mut value = shared_state.value.lock().unwrap();
-  *value = Some(Err(Error::ConnectionClosed));
-  if let Some(waker) = shared_state.waker.clone() {
+  let mut values = shared_state.values.lock().unwrap();
+  while let Some(waker) = shared_state.wakers.pop() {
+    values.push(Err(Error::ConnectionClosed));
     waker.wake();
   }
 }
 
+#[derive(Clone)]
 pub struct Connection<T>
 where
   T: 'static + DeserializeOwned + Serialize + Send + Requestable,
@@ -239,13 +258,11 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Connection<
   }
 
   pub fn recv(&mut self) -> impl Future<Output = Result<T, Error>> {
-    let value = Arc::new(Mutex::new(None));
     let mut shared_state = self.shared_state.lock().unwrap();
-    shared_state.value = value.clone();
 
     ReceiveFuture {
       shared_state: self.shared_state.clone(),
-      value:        value,
+      values:        shared_state.values.clone(),
     }
   }
 
