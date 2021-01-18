@@ -49,13 +49,12 @@ pub struct ZeroConnection {
 impl Clone for ZeroConnection {
   fn clone(&self) -> Self {
     Self {
-      connection: self.connection.clone(),
+      connection:  self.connection.clone(),
       next_req_id: self.next_req_id.clone(),
-      address: self.address.clone(),
+      address:     self.address.clone(),
     }
   }
 }
-
 
 impl ZeroConnection {
   /// Creates a new ZeroConnection from a given reader and writer
@@ -68,8 +67,8 @@ impl ZeroConnection {
       reader:   Arc::new(Mutex::new(reader)),
       writer:   Arc::new(Mutex::new(writer)),
       requests: HashMap::new(),
-      values:    Arc::new(Mutex::new(vec![])),
-      wakers:    vec![],
+      values:   Arc::new(Mutex::new(vec![])),
+      wakers:   vec![],
     };
     let conn = Connection {
       shared_state: Arc::new(Mutex::new(shared_state)),
@@ -168,11 +167,14 @@ impl ZeroConnection {
 #[cfg(test)]
 mod tests {
   use super::ZeroConnection;
-  use crate::{ZeroMessage, address::Address};
+  use crate::{address::Address, ZeroMessage};
   use futures::executor::block_on;
   use futures::join;
-  use std::{collections::HashMap, io::{Error, ErrorKind, Read, Result, Write}};
   use std::sync::mpsc::{channel, Receiver, Sender};
+  use std::{
+    collections::HashMap,
+    io::{Error, ErrorKind, Read, Result, Write},
+  };
 
   struct ChannelWriter {
     tx:     Sender<Vec<u8>>,
@@ -299,6 +301,5 @@ mod tests {
     });
     let result = block_on(server.recv()).ok().unwrap();
     assert!(result.req_id == client2.last_req_id());
-
   }
 }

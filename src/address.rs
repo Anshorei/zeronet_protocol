@@ -2,7 +2,7 @@ use koibumi_base32 as base32;
 use std::convert::TryInto;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use thiserror::Error as Error;
+use thiserror::Error;
 
 // #[error("Error parsing address `{text}`")]
 // pub struct ParseError {
@@ -15,8 +15,8 @@ pub enum ParseError {
   ParseIntError(#[from] std::num::ParseIntError),
   #[error("Address `{address}` has wrong length ({length}) for {expected}")]
   WrongLength {
-    address: String,
-    length: usize,
+    address:  String,
+    length:   usize,
     expected: String,
   },
   #[error("Unrecognized address format")]
@@ -93,8 +93,8 @@ impl Address {
       let mut address_bytes = [0u8; 4];
       if bytes.len() != 4 {
         return Err(ParseError::WrongLength {
-          address: address.to_string(),
-          length: bytes.len(),
+          address:  address.to_string(),
+          length:   bytes.len(),
           expected: "ipv4".to_string(),
         });
       }

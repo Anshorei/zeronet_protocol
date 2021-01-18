@@ -14,11 +14,11 @@ use std::task::{Context, Poll, Waker};
 pub struct SharedState<T> {
   pub reader:   Arc<Mutex<dyn Read + Send>>,
   pub writer:   Arc<Mutex<dyn Write + Send>>,
-  pub values:    Arc<Mutex<Vec<Result<T, Error>>>>,
+  pub values:   Arc<Mutex<Vec<Result<T, Error>>>>,
   // Wakers for senders
   pub requests: HashMap<usize, (Arc<Mutex<Option<Result<T, Error>>>>, Option<Waker>)>,
   // Wakers for receivers
-  pub wakers:    Vec<Waker>,
+  pub wakers:   Vec<Waker>,
 }
 
 pub struct SendState<T> {
@@ -89,7 +89,7 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for 
 #[must_use = "futures do nothing unless polled"]
 pub struct ReceiveFuture<T> {
   shared_state: Arc<Mutex<SharedState<T>>>,
-  values:        Arc<Mutex<Vec<Result<T, Error>>>>,
+  values:       Arc<Mutex<Vec<Result<T, Error>>>>,
 }
 
 impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for ReceiveFuture<T> {
@@ -262,7 +262,7 @@ impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Connection<
 
     ReceiveFuture {
       shared_state: self.shared_state.clone(),
-      values:        shared_state.values.clone(),
+      values:       shared_state.values.clone(),
     }
   }
 

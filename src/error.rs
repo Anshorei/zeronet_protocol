@@ -1,5 +1,5 @@
-use crate::address::ParseError;
 use crate::address::AddressError;
+use crate::address::ParseError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
