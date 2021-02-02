@@ -1,14 +1,8 @@
 use koibumi_base32 as base32;
 use std::{
-  io::{Read, Write},
   convert::TryInto,
-  net::{
-    IpAddr,
-    Ipv4Addr,
-    Ipv6Addr,
-    SocketAddr,
-    TcpStream,
-  },
+  io::{Read, Write},
+  net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream},
 };
 use thiserror::Error;
 
@@ -25,7 +19,7 @@ pub enum ParseError {
   #[error("Unrecognized address format")]
   UnrecognizedAddressFormat,
   #[error("Address is missing port")]
-  MissingPort
+  MissingPort,
 }
 
 #[derive(Debug, Error)]
@@ -66,7 +60,10 @@ impl TryInto<SocketAddr> for Address {
 
   fn try_into(self) -> Result<SocketAddr, Self::Error> {
     match self {
-      Address::IPV4(ip, port) => Ok(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3])), port)),
+      Address::IPV4(ip, port) => Ok(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3])),
+        port,
+      )),
       Address::IPV6(ip, port) => Ok(SocketAddr::new(IpAddr::V6(Ipv6Addr::from(ip)), port)),
       _ => Err(AddressError::InvalidAddressType),
     }
@@ -78,8 +75,14 @@ impl TryInto<SocketAddr> for &Address {
 
   fn try_into(self) -> Result<SocketAddr, Self::Error> {
     match self {
-      Address::IPV4(ip, port) => Ok(SocketAddr::new(IpAddr::V4(Ipv4Addr::from(ip.clone())), *port)),
-      Address::IPV6(ip, port) => Ok(SocketAddr::new(IpAddr::V6(Ipv6Addr::from(ip.clone())), *port)),
+      Address::IPV4(ip, port) => Ok(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::from(ip.clone())),
+        *port,
+      )),
+      Address::IPV6(ip, port) => Ok(SocketAddr::new(
+        IpAddr::V6(Ipv6Addr::from(ip.clone())),
+        *port,
+      )),
       _ => Err(AddressError::InvalidAddressType),
     }
   }
@@ -108,12 +111,12 @@ impl Address {
       return match address.len() {
         16 => Ok(Address::OnionV2(address.to_string(), port)),
         56 => Ok(Address::OnionV3(address.to_string(), port)),
-        l => Err(ParseError::WrongLength{
-          address: address.to_string(),
-          length: l,
+        l => Err(ParseError::WrongLength {
+          address:  address.to_string(),
+          length:   l,
           expected: "16 or 56".to_string(),
-        })
-      }
+        }),
+      };
     } else if let Some(address) = parts[0].strip_suffix(".b32.i2p") {
       return Ok(Address::I2PB32(address.to_string(), port));
     } else if let Some(address) = parts[0].strip_suffix(".loki") {
@@ -290,11 +293,11 @@ impl Address {
       Address::IPV4(_, _) => {
         let socket_addr: SocketAddr = self.try_into().unwrap();
         socket_addr.to_string()
-      },
+      }
       Address::IPV6(_, _) => {
         let socket_addr: SocketAddr = self.try_into().unwrap();
         socket_addr.to_string()
-      },
+      }
       Address::OnionV2(address, port) => format!("{}.onion:{}", address, port),
       Address::OnionV3(address, port) => format!("{}.onion:{}", address, port),
       Address::I2PB32(address, port) => format!("{}.b32.i2p:{}", address, port),

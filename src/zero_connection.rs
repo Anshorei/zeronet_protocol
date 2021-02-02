@@ -168,8 +168,8 @@ mod tests {
   use crate::ZeroMessage;
   use futures::executor::block_on;
   use std::{
-    sync::mpsc::{channel, Receiver, Sender},
     io::{Error, ErrorKind, Read, Result, Write},
+    sync::mpsc::{channel, Receiver, Sender},
   };
 
   struct ChannelWriter {
