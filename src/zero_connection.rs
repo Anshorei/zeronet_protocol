@@ -93,7 +93,9 @@ impl ZeroConnection {
 
       let body = crate::message::templates::Handshake::default();
       let message = ZeroMessage::request("handshake", connection.req_id(), body);
-      let result = connection.connection.request(message).await?;
+      let _ = connection.connection.request(message).await?;
+      // TODO: update the connection with information from the handshake
+
       Ok(connection)
     };
   }
@@ -163,12 +165,10 @@ impl ZeroConnection {
 #[cfg(test)]
 mod tests {
   use super::ZeroConnection;
-  use crate::{address::Address, ZeroMessage};
+  use crate::ZeroMessage;
   use futures::executor::block_on;
-  use futures::join;
-  use std::sync::mpsc::{channel, Receiver, Sender};
   use std::{
-    collections::HashMap,
+    sync::mpsc::{channel, Receiver, Sender},
     io::{Error, ErrorKind, Read, Result, Write},
   };
 
@@ -264,7 +264,7 @@ mod tests {
     let (mut server, mut client) = create_pair();
     let request = client.request("ping", String::new());
     std::thread::spawn(move || {
-      let result = block_on(request);
+      block_on(request).unwrap();
     });
     let request = block_on(server.recv());
     assert!(request.is_ok());
@@ -276,16 +276,16 @@ mod tests {
     let mut server2 = server1.clone();
 
     std::thread::spawn(move || {
-      block_on(client.connection.send(ZeroMessage::request("ping", 0, ())));
-      block_on(client.connection.send(ZeroMessage::request("ping", 1, ())));
-      block_on(client.connection.send(ZeroMessage::request("ping", 2, ())));
-      block_on(client.connection.send(ZeroMessage::request("ping", 3, ())));
+      block_on(client.connection.send(ZeroMessage::request("ping", 0, ()))).unwrap();
+      block_on(client.connection.send(ZeroMessage::request("ping", 1, ()))).unwrap();
+      block_on(client.connection.send(ZeroMessage::request("ping", 2, ()))).unwrap();
+      block_on(client.connection.send(ZeroMessage::request("ping", 3, ()))).unwrap();
     });
     std::thread::spawn(move || {
-      let result = block_on(server1.recv()).ok().unwrap();
-      let result = block_on(server1.recv()).ok().unwrap();
+      block_on(server1.recv()).ok().unwrap();
+      block_on(server1.recv()).ok().unwrap();
     });
-    let result = block_on(server2.recv()).ok().unwrap();
+    block_on(server2.recv()).ok().unwrap();
     let result = block_on(server2.recv());
     assert!(result.is_ok());
   }
@@ -293,10 +293,10 @@ mod tests {
   #[test]
   fn multiple_clients() {
     let (mut server, mut client1) = create_pair();
-    let mut client2 = client1.clone();
+    let client2 = client1.clone();
 
     std::thread::spawn(move || {
-      block_on(client1.request("ping", ()));
+      block_on(client1.request("ping", ())).unwrap();
     });
     let result = block_on(server.recv()).ok().unwrap();
     assert!(result.req_id == client2.last_req_id());

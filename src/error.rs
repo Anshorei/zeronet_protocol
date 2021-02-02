@@ -45,7 +45,7 @@ impl Error {
 }
 
 impl<T> From<std::sync::mpsc::SendError<T>> for Error {
-  fn from(err: std::sync::mpsc::SendError<T>) -> Error {
+  fn from(_: std::sync::mpsc::SendError<T>) -> Error {
     Error::ChannelSendError
   }
 }

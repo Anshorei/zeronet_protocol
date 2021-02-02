@@ -1,13 +1,16 @@
 use koibumi_base32 as base32;
-use std::convert::TryInto;
-use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpStream};
+use std::{
+  io::{Read, Write},
+  convert::TryInto,
+  net::{
+    IpAddr,
+    Ipv4Addr,
+    Ipv6Addr,
+    SocketAddr,
+    TcpStream,
+  },
+};
 use thiserror::Error;
-
-// #[error("Error parsing address `{text}`")]
-// pub struct ParseError {
-//   text: String,
-// }
 
 #[derive(Debug, Error)]
 pub enum ParseError {
@@ -21,16 +24,22 @@ pub enum ParseError {
   },
   #[error("Unrecognized address format")]
   UnrecognizedAddressFormat,
+  #[error("Address is missing port")]
+  MissingPort
 }
 
 #[derive(Debug, Error)]
 pub enum AddressError {
   #[error("Error unpacking address")]
   UnpackError,
+  #[error("Unexpected number of bytes {0}")]
+  InvalidBytearray(usize),
   #[error("Error creating tcp stream read-write pair")]
   TcpStreamError,
-  #[error("I/O Error: `{0}`")]
+  #[error("I/O Error")]
   IoError(#[from] std::io::Error),
+  #[error("Address is of an invalid type")]
+  InvalidAddressType,
 }
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -52,10 +61,29 @@ impl From<SocketAddr> for Address {
   }
 }
 
-// impl From<T: ToSocketAddrs>()
-// pub fn from<T: ToSocketAddrs>(address: T) -> Address {
+impl TryInto<SocketAddr> for Address {
+  type Error = AddressError;
 
-// }
+  fn try_into(self) -> Result<SocketAddr, Self::Error> {
+    match self {
+      Address::IPV4(ip, port) => Ok(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3])), port)),
+      Address::IPV6(ip, port) => Ok(SocketAddr::new(IpAddr::V6(Ipv6Addr::from(ip)), port)),
+      _ => Err(AddressError::InvalidAddressType),
+    }
+  }
+}
+
+impl TryInto<SocketAddr> for &Address {
+  type Error = AddressError;
+
+  fn try_into(self) -> Result<SocketAddr, Self::Error> {
+    match self {
+      Address::IPV4(ip, port) => Ok(SocketAddr::new(IpAddr::V4(Ipv4Addr::from(ip.clone())), *port)),
+      Address::IPV6(ip, port) => Ok(SocketAddr::new(IpAddr::V6(Ipv6Addr::from(ip.clone())), *port)),
+      _ => Err(AddressError::InvalidAddressType),
+    }
+  }
+}
 
 impl Address {
   /// Create an address by parsing a string
@@ -67,44 +95,29 @@ impl Address {
   /// ```
   pub fn parse<S: Into<String>>(address: S) -> Result<Address, ParseError> {
     let address: String = address.into();
-    let parts: Vec<&str> = address.split(":").collect();
-    if let Some(address) = parts[0].strip_suffix(".onion") {
-      // TODO: handle onion v3 addresses
-      // TODO: hash address
-      if let Some(port) = parts.get(1) {
-        let port = port.to_string().parse::<u16>()?;
-        return Ok(Address::OnionV2(address.to_string(), port));
-      }
-    } else if let Some(address) = parts[0].strip_suffix(".i2p") {
-      if let Some(port) = parts.get(1) {
-        let port = port.to_string().parse::<u16>()?;
-        return Ok(Address::I2PB32(address.to_string(), port));
-      }
+    if let Ok(socket_address) = address.parse::<SocketAddr>() {
+      return Ok(Address::from(socket_address));
     }
     let parts: Vec<&str> = address.split(":").collect();
-    if parts.len() > 2 {
-      // TODO: Implement IPV6 parsing
-    } else if let Some(address) = parts.first() {
-      let bytes: Vec<Result<u8, _>> = address
-        .to_string()
-        .split(".")
-        .map(|byte| byte.to_string().parse::<u8>())
-        .collect();
-      let mut address_bytes = [0u8; 4];
-      if bytes.len() != 4 {
-        return Err(ParseError::WrongLength {
-          address:  address.to_string(),
-          length:   bytes.len(),
-          expected: "ipv4".to_string(),
-        });
+    let port = parts
+      .get(1)
+      .map(|port| port.to_string().parse::<u16>())
+      .ok_or(ParseError::MissingPort)??;
+
+    if let Some(address) = parts[0].strip_suffix(".onion") {
+      return match address.len() {
+        16 => Ok(Address::OnionV2(address.to_string(), port)),
+        56 => Ok(Address::OnionV3(address.to_string(), port)),
+        l => Err(ParseError::WrongLength{
+          address: address.to_string(),
+          length: l,
+          expected: "16 or 56".to_string(),
+        })
       }
-      for (i, byte) in bytes.into_iter().enumerate() {
-        address_bytes[i] = byte?
-      }
-      if let Some(port) = parts.get(1) {
-        let port = port.to_string().parse::<u16>()?;
-        return Ok(Address::IPV4(address_bytes, port));
-      }
+    } else if let Some(address) = parts[0].strip_suffix(".b32.i2p") {
+      return Ok(Address::I2PB32(address.to_string(), port));
+    } else if let Some(address) = parts[0].strip_suffix(".loki") {
+      return Ok(Address::Loki(address.to_string(), port));
     }
 
     Err(ParseError::UnrecognizedAddressFormat)
@@ -148,8 +161,21 @@ impl Address {
         let address = base32::encode(&array);
         Ok(Address::OnionV2(address, port))
       }
-      // 42 => // TODO: Onion V3
-      _ => Err(AddressError::UnpackError),
+      34 => {
+        let port = u16::from_le_bytes(bytes[32..34].try_into().unwrap());
+        let mut array = [0u8; 32];
+        array.copy_from_slice(&bytes[..32]);
+        let address = base32::encode(&array);
+        Ok(Address::I2PB32(address, port))
+      }
+      37 => {
+        let port = u16::from_le_bytes(bytes[35..37].try_into().unwrap());
+        let mut array = [0u8; 35];
+        array.copy_from_slice(&bytes[..35]);
+        let address = base32::encode(&array);
+        Ok(Address::OnionV3(address, port))
+      }
+      l => Err(AddressError::InvalidBytearray(l)),
     }
   }
 
@@ -157,19 +183,61 @@ impl Address {
   /// ```
   /// use zeronet_protocol::Address;
   ///
-  /// let address = Address::parse("127.0.0.1:4321").unwrap();
+  /// let address = Address::parse("127.0.0.1:4321").expect("could not parse address");
   /// let packed = address.pack();
   ///
   /// assert_eq!(packed, [127, 0, 0, 1, 225, 16]);
   ///
-  /// let address = Address::parse("ytcnzluhaxidtbf4.onion:4321").unwrap();
+  /// let address_string = "[1001:2002:3003:4004:5005:6006:7007:8008]:4321".to_string();
+  /// let address = Address::parse(&address_string).expect("could not parse address");
   /// let packed = address.pack();
-  /// let unpacked = Address::unpack(&packed).unwrap();
+  /// let unpacked = Address::unpack(&packed).expect("could not unpack address");
+  ///
+  /// assert_eq!(packed, [16, 1, 32, 2, 48, 3, 64, 4, 80, 5, 96, 6, 112, 7, 128, 8, 225, 16]);
+  /// assert_eq!(unpacked.to_string(), address_string);
+  ///
+  /// let address_string = "[2001:db8::ff00:42:8329]:4321".to_string();
+  /// let address = Address::parse(&address_string).expect("could not parse address");
+  /// let packed = address.pack();
+  /// let unpacked = Address::unpack(&packed).expect("could not unpack address");
+  ///
+  /// assert_eq!(packed, [32, 1, 13, 184, 0, 0, 0, 0, 0, 0, 255, 0, 0, 66, 131, 41, 225, 16]);
+  /// assert_eq!(unpacked.to_string(), address_string);
+  ///
+  /// let address_string = "ytcnzluhaxidtbf4.onion:4321".to_string();
+  /// let address = Address::parse(&address_string).expect("could not parse address");
+  /// let packed = address.pack();
+  /// let unpacked = Address::unpack(&packed).expect("could not unpack address");
   ///
   /// assert_eq!(packed, [196, 196, 220, 174, 135, 5, 208, 57, 132, 188, 225, 16]);
-  /// assert_eq!(unpacked.to_string(), "ytcnzluhaxidtbf4.onion:4321".to_string());
+  /// assert_eq!(unpacked.to_string(), address_string);
+  ///
+  /// let address_string = "trackd5xiih3z7xyvvkyz2n65lehqziayjpxzsau3mwccwlelxrdrgid.onion:4321".to_string();
+  /// let address = Address::parse(&address_string).expect("could not parse address");
+  /// let packed = address.pack();
+  /// let unpacked = Address::unpack(&packed).expect("could not unpack address");
+  ///
+  /// assert_eq!(packed, [156, 64, 37, 15, 183, 66, 15, 188, 254, 248, 173, 85, 140, 233, 190, 234, 200, 120, 101, 0, 194, 95, 124, 200, 20, 219, 44, 33, 89, 100, 93, 226, 56, 153, 3, 225, 16]);
+  /// assert_eq!(unpacked.to_string(), address_string);
+  ///
+  /// let address_string = "udhdrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v4jna.b32.i2p:4321".to_string();
+  /// let address = Address::parse(&address_string).expect("could not parse address");
+  /// let packed = address.pack();
+  /// let unpacked = Address::unpack(&packed).expect("could not unpack address");
+  ///
+  /// assert_eq!(packed, [160, 206, 56, 206, 34, 36, 210, 206, 202, 249, 146, 147, 136, 247, 51, 121, 37, 156, 12, 39, 224, 222, 189, 189, 124, 164, 205, 8, 91, 85, 226, 90, 225, 16]);
+  /// assert_eq!(unpacked.to_string(), address_string);
+  ///
+  /// // TODO: add support for loki addresses
+  /// // let address_string = "dw68y1xhptqbhcm5s8aaaip6dbopykagig5q5u1za4c7pzxto77y.loki:4321".to_string();
+  /// // let address = Address::parse(&address_string).expect("could not parse address");
+  /// // let packed = address.pack();
+  /// // let unpacked = Address::unpack(&packed).expect("could not unpack address");
+  ///
+  /// // assert_eq!(packed, [160, 206, 56, 206, 34, 36, 210, 206, 202, 249, 146, 147, 136, 247, 51, 121, 37, 156, 12, 39, 224, 222, 189, 189, 124, 164, 205, 8, 91, 85, 226, 90, 225, 16]);
+  /// // assert_eq!(unpacked.to_string(), address_string);
   /// ```
-  /// TODO: test IPV6 and Onion
+  /// TODO: OnionV3, I2P
   pub fn pack(&self) -> Vec<u8> {
     match self {
       Address::IPV4(address, port) => {
@@ -188,7 +256,25 @@ impl Address {
         bytes.append(&mut port.to_le_bytes().to_vec());
         bytes
       }
+      Address::OnionV3(address, port) => {
+        let address = address.to_lowercase();
+        let mut bytes = base32::decode(address).unwrap();
+        bytes.append(&mut port.to_le_bytes().to_vec());
+        bytes
+      }
+      Address::I2PB32(address, port) => {
+        let address = address.to_lowercase();
+        let mut bytes = base32::decode(address).unwrap();
+        bytes.append(&mut port.to_le_bytes().to_vec());
+        bytes
+      }
       _ => vec![],
+      // Address::Loki(address, port) => {
+      //   let address = address.to_lowercase();
+      //   let mut bytes = base32::decode(address).unwrap();
+      //   bytes.append(&mut port.to_le_bytes().to_vec());
+      //   bytes
+      // }
     }
   }
 
@@ -201,12 +287,18 @@ impl Address {
   /// ```
   pub fn to_string(&self) -> String {
     match self {
-      Address::IPV4(address, port) => format!(
-        "{}.{}.{}.{}:{}",
-        address[0], address[1], address[2], address[3], port
-      ),
+      Address::IPV4(_, _) => {
+        let socket_addr: SocketAddr = self.try_into().unwrap();
+        socket_addr.to_string()
+      },
+      Address::IPV6(_, _) => {
+        let socket_addr: SocketAddr = self.try_into().unwrap();
+        socket_addr.to_string()
+      },
       Address::OnionV2(address, port) => format!("{}.onion:{}", address, port),
-      _ => "not implemented".to_string(),
+      Address::OnionV3(address, port) => format!("{}.onion:{}", address, port),
+      Address::I2PB32(address, port) => format!("{}.b32.i2p:{}", address, port),
+      Address::Loki(address, port) => format!("{}.loki:{}", address, port),
     }
   }
   pub fn get_pair(&self) -> Result<(Box<dyn Read + Send>, Box<dyn Write + Send>), AddressError> {
@@ -282,7 +374,7 @@ mod tests {
   #[test]
   fn test_bytevec_vs_bytebuf() {
     // This test is just here so that a change in how bytes are serialized
-    // won't go unnoticed, particularly as that could mean the can be
+    // won't go unnoticed, particularly as that could mean they can be
     // simplified.
     let address = Address::parse("127.0.0.1:8001").unwrap();
     let bytes = address.pack();
@@ -319,6 +411,6 @@ impl std::fmt::Display for Address {
       Address::I2PB32(_, _) => "i2pb32",
       Address::Loki(_, _) => "loki",
     };
-    write!(f, "{}://{}", address_type, self.to_string())
+    write!(f, "{} [{}]", address_type, self.to_string())
   }
 }

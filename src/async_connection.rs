@@ -189,7 +189,8 @@ where
     let response: Result<T, _> = rmp_serde::from_read(&mut *reader);
     let mut moved_state = moved_state.lock().unwrap();
 
-    if let Err(err) = response {
+    if let Err(_) = response {
+      // TODO: do something with error
       close_connection(&mut moved_state);
       return;
     }
@@ -284,7 +285,7 @@ where
   }
 
   pub fn recv(&mut self) -> impl Future<Output = Result<T, Error>> {
-    let mut shared_state = self.shared_state.lock().unwrap();
+    let shared_state = self.shared_state.lock().unwrap();
 
     ReceiveFuture {
       shared_state: self.shared_state.clone(),
