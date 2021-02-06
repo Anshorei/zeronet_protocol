@@ -20,9 +20,12 @@ serde_bytes = "0.11"
 rmp-serde = "0.15"
 rmpv = "0.4"
 rmp = "0.8"
-tokio = { version = "1.1" }
+tokio = { version = "1.5" }
 futures = "0.3"
 base64 = "0.13"
 koibumi-base32 = "0.0.2"
 itertools = "0.10"
 thiserror = "1.0"
+
+i2p = { version = "0.0.1", optional = true }
+tor = { version = "0.1", optional = true }

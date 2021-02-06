@@ -266,6 +266,19 @@ impl<T> Connection<T>
 where
   T: 'static + DeserializeOwned + Serialize + Send + Requestable,
 {
+  pub fn new(reader: Box<dyn Read + Send>, writer: Box<dyn Write + Send>) -> Self {
+    let shared_state = SharedState::<T> {
+      reader:   Arc::new(Mutex::new(reader)),
+      writer:   Arc::new(Mutex::new(writer)),
+      requests: HashMap::new(),
+      values:   Arc::new(Mutex::new(vec![])),
+      wakers:   vec![],
+      closed:   false,
+    };
+    return Self {
+      shared_state: Arc::new(Mutex::new(shared_state)),
+    };
+  }
   pub fn is_closed(&self) -> bool {
     let shared_state = self.shared_state.lock().unwrap();
     return shared_state.closed;

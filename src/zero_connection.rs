@@ -1,11 +1,9 @@
-use crate::address::Address;
 use crate::async_connection::Connection;
-use crate::async_connection::SharedState;
 use crate::error::Error;
 use crate::message::{Request, Response, ZeroMessage};
+use crate::PeerAddr;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::collections::HashMap;
 use std::future::Future;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
@@ -20,7 +18,7 @@ pub struct ZeroConnection {
   /// ```no_run
   /// use std::net::{TcpStream, TcpListener};
   /// use futures::executor::block_on;
-  ///	use zeronet_protocol::{ZeroConnection, ZeroMessage, Address};
+  ///	use zeronet_protocol::{ZeroConnection, ZeroMessage, PeerAddr};
   ///
   /// fn handle_connection(stream: TcpStream) {
   ///		let mut connection = ZeroConnection::new(Box::new(stream.try_clone().unwrap()), Box::new(stream)).unwrap();
@@ -41,6 +39,7 @@ pub struct ZeroConnection {
   /// }
   /// ```
   pub connection:  Connection<ZeroMessage>,
+  pub target_address: Option<PeerAddr>,
   pub next_req_id: Arc<Mutex<usize>>,
 }
 
@@ -48,6 +47,7 @@ impl Clone for ZeroConnection {
   fn clone(&self) -> Self {
     Self {
       connection:  self.connection.clone(),
+      target_address: self.target_address.clone(),
       next_req_id: self.next_req_id.clone(),
     }
   }
@@ -59,19 +59,10 @@ impl ZeroConnection {
     reader: Box<dyn Read + Send>,
     writer: Box<dyn Write + Send>,
   ) -> Result<ZeroConnection, Error> {
-    let shared_state = SharedState::<ZeroMessage> {
-      reader:   Arc::new(Mutex::new(reader)),
-      writer:   Arc::new(Mutex::new(writer)),
-      requests: HashMap::new(),
-      values:   Arc::new(Mutex::new(vec![])),
-      wakers:   vec![],
-      closed:   false,
-    };
-    let conn = Connection {
-      shared_state: Arc::new(Mutex::new(shared_state)),
-    };
+    let conn = Connection::new(reader, writer);
     let conn = ZeroConnection {
       connection:  conn,
+      target_address: None,
       next_req_id: Arc::new(Mutex::new(0)),
     };
 
@@ -79,21 +70,25 @@ impl ZeroConnection {
   }
 
   /// Creates a new ZeroConnection from a given address
-  pub fn from_address(address: Address) -> Result<ZeroConnection, Error> {
+  pub fn from_address(address: PeerAddr) -> Result<ZeroConnection, Error> {
     let (reader, writer) = address.get_pair()?;
-    ZeroConnection::new(reader, writer)
+    let mut conn = ZeroConnection::new(reader, writer)?;
+    conn.target_address = Some(address);
+    Ok(conn)
   }
 
   /// Connect to an ip and port and perform the handshake,
   /// then return the ZeroConnection.
   pub fn connect(address: String) -> impl Future<Output = Result<ZeroConnection, Error>> {
     return async {
-      let address = Address::parse(address)?;
-      let mut connection = ZeroConnection::from_address(address).unwrap();
+      let address = PeerAddr::parse(address)?;
+      let mut connection = ZeroConnection::from_address(address.clone()).unwrap();
 
-      let body = crate::message::templates::Handshake::default();
-      let message = ZeroMessage::request("handshake", connection.req_id(), body);
-      let _ = connection.connection.request(message).await?;
+      let mut body = crate::message::templates::Handshake::default();
+      body.target_address = Some(address.to_string());
+      body.peer_id = String::new(); // TODO: generate peer id for clearnet?
+
+      let resp = connection.request("handshake", body).await?;
       // TODO: update the connection with information from the handshake
 
       Ok(connection)

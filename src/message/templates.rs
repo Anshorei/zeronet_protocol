@@ -8,13 +8,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(default)]
 pub struct Handshake {
+  /// The PeerID of the sender
   pub peer_id:         String,
   pub fileserver_port: usize,
+  /// Time at which the message was sent
   pub time:            u64,
   #[serde(default, skip_serializing_if = "is_default")]
   pub crypt:           Option<String>,
   #[serde(default, skip_serializing_if = "is_default")]
   pub crypt_supported: Vec<String>,
+  /// For backwards compatibility with ZeroNet-py < v0.7.0
   #[serde(default, skip_serializing_if = "is_default")]
   pub use_bin_type:    bool,
   #[serde(default, skip_serializing_if = "is_default")]
@@ -25,8 +28,9 @@ pub struct Handshake {
   pub port_opened:     Option<bool>,
   #[serde(default, skip_serializing_if = "is_default")]
   pub rev:             usize,
-  #[serde(default, skip_serializing_if = "is_default")]
-  pub target_ip:       Option<String>,
+  /// The address this handshake is addressed to, including ".onion" or ".b32.i2p"
+  #[serde(default, skip_serializing_if = "is_default", rename = "target_ip")]
+  pub target_address:       Option<String>,
   #[serde(default, skip_serializing_if = "is_default")]
   pub version:         String,
 }
@@ -46,7 +50,7 @@ impl Handshake {
 
       onion:     None,
       crypt:     None,
-      target_ip: None,
+      target_address: None,
       peer_id:   String::new(),
     }
   }
@@ -109,7 +113,7 @@ impl Debug for AnnouncePeers {
       .chain(self.i2p_b32.iter())
       .chain(self.loki.iter());
     let strings: Vec<String> = iterator
-      .map(|ip| crate::address::Address::unpack(ip).unwrap().to_string())
+      .map(|ip| crate::PeerAddr::unpack(ip).unwrap().to_string())
       .collect();
     write!(f, "[{}]", strings.join(", "))
   }
