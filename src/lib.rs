@@ -5,6 +5,7 @@ pub mod message;
 pub mod requestable;
 pub mod util;
 pub mod zero_connection;
+pub mod net;
 
 pub use address::{PeerAddr, ToPeerAddrs};
 pub use error::Error;
