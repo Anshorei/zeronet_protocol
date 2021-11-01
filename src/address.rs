@@ -1,4 +1,3 @@
-use koibumi_base32 as base32;
 use std::{
   convert::TryInto,
   io::{self, Read, Write},
@@ -7,6 +6,8 @@ use std::{
 };
 use thiserror::Error;
 
+#[cfg(any(feature = "tor", feature = "i2p"))]
+use koibumi_base32 as base32;
 #[cfg(feature = "i2p")]
 use i2p::net::{I2pSocketAddr, ToI2pSocketAddrs};
 
@@ -166,6 +167,9 @@ impl TryInto<SocketAddr> for PeerAddr {
         port,
       )),
       PeerAddr::IPV6(ip, port) => Ok(SocketAddr::new(IpAddr::V6(Ipv6Addr::from(ip)), port)),
+      #[cfg(feature = "tor")]
+      _ => Err(AddressError::InvalidAddressType),
+      #[cfg(feature = "i2p")]
       _ => Err(AddressError::InvalidAddressType),
     }
   }
@@ -184,6 +188,9 @@ impl TryInto<SocketAddr> for &PeerAddr {
         IpAddr::V6(Ipv6Addr::from(ip.clone())),
         *port,
       )),
+      #[cfg(feature = "i2p")]
+      _ => Err(AddressError::InvalidAddressType),
+      #[cfg(feature = "tor")]
       _ => Err(AddressError::InvalidAddressType),
     }
   }
@@ -415,6 +422,7 @@ impl PeerAddr {
   pub fn is_clearnet(&self) -> bool {
     match self {
       PeerAddr::IPV4(_, _) | PeerAddr::IPV6(_, _) => true,
+      #[cfg(any(feature = "tor", feature = "i2p"))]
       _ => false,
     }
   }
