@@ -38,17 +38,17 @@ pub struct ZeroConnection {
   /// 	}
   /// }
   /// ```
-  pub connection:  Connection<ZeroMessage>,
+  pub connection:     Connection<ZeroMessage>,
+  pub next_req_id:    Arc<Mutex<usize>>,
   pub target_address: Option<PeerAddr>,
-  pub next_req_id: Arc<Mutex<usize>>,
 }
 
 impl Clone for ZeroConnection {
   fn clone(&self) -> Self {
     Self {
-      connection:  self.connection.clone(),
+      connection:     self.connection.clone(),
+      next_req_id:    self.next_req_id.clone(),
       target_address: self.target_address.clone(),
-      next_req_id: self.next_req_id.clone(),
     }
   }
 }
@@ -61,9 +61,9 @@ impl ZeroConnection {
   ) -> Result<ZeroConnection, Error> {
     let conn = Connection::new(reader, writer);
     let conn = ZeroConnection {
-      connection:  conn,
+      connection:     conn,
+      next_req_id:    Arc::new(Mutex::new(0)),
       target_address: None,
-      next_req_id: Arc::new(Mutex::new(0)),
     };
 
     Ok(conn)
@@ -86,10 +86,18 @@ impl ZeroConnection {
 
       let mut body = crate::message::templates::Handshake::default();
       body.target_address = Some(address.to_string());
-      body.peer_id = String::new(); // TODO: generate peer id for clearnet?
+      // TODO:
+      // - by default peer_id should be empty string
+      // - peer_id is only generated for clearnet peers
+      body.peer_id = String::new();
 
-      let resp = connection.request("handshake", body).await?;
+      let _resp = connection.request("handshake", body).await?;
       // TODO: update the connection with information from the handshake
+      // - peer_id
+      // - port
+      // - switch to encrypted connection based on crypt_supported and crypt
+      // - no need for use_bin_type, we won't support deprecated non-binary connections
+      // - what do with onion address?
 
       Ok(connection)
     };

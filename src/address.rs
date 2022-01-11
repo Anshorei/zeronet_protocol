@@ -6,10 +6,10 @@ use std::{
 };
 use thiserror::Error;
 
-#[cfg(any(feature = "tor", feature = "i2p"))]
-use koibumi_base32 as base32;
 #[cfg(feature = "i2p")]
 use i2p::net::{I2pSocketAddr, ToI2pSocketAddrs};
+#[cfg(any(feature = "tor", feature = "i2p"))]
+use koibumi_base32 as base32;
 
 pub trait ToPeerAddrs {
   /// Returned iterator over peer addresses which this type may correspond
@@ -57,7 +57,7 @@ impl ToPeerAddrs for PeerAddr {
 /// assert!(peer_addrs.is_ok());
 /// assert!(peer_addrs.unwrap().len() == 1);
 /// ```
-impl <I: Iterator<Item = SocketAddr>> ToPeerAddrs for dyn ToSocketAddrs<Iter = I> {
+impl<I: Iterator<Item = SocketAddr>> ToPeerAddrs for dyn ToSocketAddrs<Iter = I> {
   type Iter = vec::IntoIter<PeerAddr>;
   fn to_peer_addrs(&self) -> std::io::Result<Self::Iter> {
     let addrs: Vec<_> = self
@@ -92,7 +92,7 @@ impl ToPeerAddrs for SocketAddr {
 /// assert!(peer_addrs.is_ok());
 /// assert!(peer_addrs.unwrap().len() == 1);
 /// ```
-impl <I: Iterator<Item = I2pSocketAddr>> ToPeerAddrs for dyn ToI2pSocketAddrs<Iter = I> {
+impl<I: Iterator<Item = I2pSocketAddr>> ToPeerAddrs for dyn ToI2pSocketAddrs<Iter = I> {
   type Iter = vec::IntoIter<PeerAddr>;
   fn to_peer_addrs(&self) -> std::io::Result<Self::Iter> {
     let addrs: Vec<_> = self
@@ -134,7 +134,7 @@ pub enum AddressError {
   InvalidAddressType,
 }
 
-#[derive(Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum PeerAddr {
   IPV4([u8; 4], u16),
   IPV6([u8; 16], u16),
@@ -167,9 +167,7 @@ impl TryInto<SocketAddr> for PeerAddr {
         port,
       )),
       PeerAddr::IPV6(ip, port) => Ok(SocketAddr::new(IpAddr::V6(Ipv6Addr::from(ip)), port)),
-      #[cfg(feature = "tor")]
-      _ => Err(AddressError::InvalidAddressType),
-      #[cfg(feature = "i2p")]
+      #[cfg(any(feature = "i2p", feature = "tor"))]
       _ => Err(AddressError::InvalidAddressType),
     }
   }
@@ -188,9 +186,7 @@ impl TryInto<SocketAddr> for &PeerAddr {
         IpAddr::V6(Ipv6Addr::from(ip.clone())),
         *port,
       )),
-      #[cfg(feature = "i2p")]
-      _ => Err(AddressError::InvalidAddressType),
-      #[cfg(feature = "tor")]
+      #[cfg(any(feature = "i2p", feature = "tor"))]
       _ => Err(AddressError::InvalidAddressType),
     }
   }
@@ -209,31 +205,36 @@ impl PeerAddr {
     if let Ok(socket_address) = address.parse::<SocketAddr>() {
       return Ok(PeerAddr::from(socket_address));
     }
-    let parts: Vec<&str> = address.split(":").collect();
-    let port = parts
-      .get(1)
-      .map(|port| port.to_string().parse::<u16>())
-      .ok_or(ParseError::MissingPort)??;
 
-    #[cfg(feature = "tor")]
-    if let Some(address) = parts[0].strip_suffix(".onion") {
-      return match address.len() {
-        16 => Ok(PeerAddr::OnionV2(address.to_string(), port)),
-        56 => Ok(PeerAddr::OnionV3(address.to_string(), port)),
-        l => Err(ParseError::WrongLength {
-          address:  address.to_string(),
-          length:   l,
-          expected: "16 or 56".to_string(),
-        }),
-      };
-    }
-    #[cfg(feature = "i2p")]
-    if let Some(address) = parts[0].strip_suffix(".b32.i2p") {
-      return Ok(PeerAddr::I2PB32(address.to_string(), port));
-    }
-    #[cfg(feature = "loki")]
-    if let Some(address) = parts[0].strip_suffix(".loki") {
-      return Ok(PeerAddr::Loki(address.to_string(), port));
+    #[cfg(any(feature = "tor", feature = "i2p", feature = "loki"))]
+    {
+      let parts: Vec<&str> = address.split(":").collect();
+
+      let port = parts
+        .get(1)
+        .map(|port| port.to_string().parse::<u16>())
+        .ok_or(ParseError::MissingPort)??;
+
+      #[cfg(feature = "tor")]
+      if let Some(address) = parts[0].strip_suffix(".onion") {
+        return match address.len() {
+          16 => Ok(PeerAddr::OnionV2(address.to_string(), port)),
+          56 => Ok(PeerAddr::OnionV3(address.to_string(), port)),
+          l => Err(ParseError::WrongLength {
+            address:  address.to_string(),
+            length:   l,
+            expected: "16 or 56".to_string(),
+          }),
+        };
+      }
+      #[cfg(feature = "i2p")]
+      if let Some(address) = parts[0].strip_suffix(".b32.i2p") {
+        return Ok(PeerAddr::I2PB32(address.to_string(), port));
+      }
+      #[cfg(feature = "loki")]
+      if let Some(address) = parts[0].strip_suffix(".loki") {
+        return Ok(PeerAddr::Loki(address.to_string(), port));
+      }
     }
 
     Err(ParseError::UnrecognizedAddressFormat)
@@ -375,10 +376,11 @@ impl PeerAddr {
   }
   pub fn get_pair(&self) -> Result<(Box<dyn Read + Send>, Box<dyn Write + Send>), AddressError> {
     match self {
-      PeerAddr::IPV4(_, _) => {
+      PeerAddr::IPV4(_, _) | PeerAddr::IPV6(_, _) => {
         let socket = TcpStream::connect(self.to_string())?;
         return Ok((Box::new(socket.try_clone()?), Box::new(socket)));
       }
+      #[cfg(any(feature = "i2p", feature = "tor"))]
       _ => Err(AddressError::TcpStreamError),
     }
   }
@@ -499,7 +501,10 @@ mod tests {
     let packed = address.pack();
     let unpacked = PeerAddr::unpack(&packed).expect("could not unpack address");
 
-    assert_eq!(packed, [16, 1, 32, 2, 48, 3, 64, 4, 80, 5, 96, 6, 112, 7, 128, 8, 225, 16]);
+    assert_eq!(
+      packed,
+      [16, 1, 32, 2, 48, 3, 64, 4, 80, 5, 96, 6, 112, 7, 128, 8, 225, 16]
+    );
     assert_eq!(unpacked.to_string(), address_string);
   }
 
@@ -510,7 +515,10 @@ mod tests {
     let packed = address.pack();
     let unpacked = PeerAddr::unpack(&packed).expect("could not unpack address");
 
-    assert_eq!(packed, [32, 1, 13, 184, 0, 0, 0, 0, 0, 0, 255, 0, 0, 66, 131, 41, 225, 16]);
+    assert_eq!(
+      packed,
+      [32, 1, 13, 184, 0, 0, 0, 0, 0, 0, 255, 0, 0, 66, 131, 41, 225, 16]
+    );
     assert_eq!(unpacked.to_string(), address_string);
   }
 
@@ -522,43 +530,67 @@ mod tests {
     let packed = address.pack();
     let unpacked = PeerAddr::unpack(&packed).expect("could not unpack address");
 
-    assert_eq!(packed, [196, 196, 220, 174, 135, 5, 208, 57, 132, 188, 225, 16]);
+    assert_eq!(
+      packed,
+      [196, 196, 220, 174, 135, 5, 208, 57, 132, 188, 225, 16]
+    );
     assert_eq!(unpacked.to_string(), address_string);
   }
 
   #[cfg(feature = "tor")]
   #[test]
   fn test_pack_onionv3() {
-    let address_string = "trackd5xiih3z7xyvvkyz2n65lehqziayjpxzsau3mwccwlelxrdrgid.onion:4321".to_string();
+    let address_string =
+      "trackd5xiih3z7xyvvkyz2n65lehqziayjpxzsau3mwccwlelxrdrgid.onion:4321".to_string();
     let address = PeerAddr::parse(&address_string).expect("could not parse address");
     let packed = address.pack();
     let unpacked = PeerAddr::unpack(&packed).expect("could not unpack address");
 
-    assert_eq!(packed, [156, 64, 37, 15, 183, 66, 15, 188, 254, 248, 173, 85, 140, 233, 190, 234, 200, 120, 101, 0, 194, 95, 124, 200, 20, 219, 44, 33, 89, 100, 93, 226, 56, 153, 3, 225, 16]);
+    assert_eq!(
+      packed,
+      [
+        156, 64, 37, 15, 183, 66, 15, 188, 254, 248, 173, 85, 140, 233, 190, 234, 200, 120, 101, 0,
+        194, 95, 124, 200, 20, 219, 44, 33, 89, 100, 93, 226, 56, 153, 3, 225, 16
+      ]
+    );
     assert_eq!(unpacked.to_string(), address_string);
   }
 
   #[cfg(feature = "i2p")]
   #[test]
   fn test_pack_i2pb32() {
-    let address_string = "udhdrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v4jna.b32.i2p:4321".to_string();
+    let address_string =
+      "udhdrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v4jna.b32.i2p:4321".to_string();
     let address = PeerAddr::parse(&address_string).expect("could not parse address");
     let packed = address.pack();
     let unpacked = PeerAddr::unpack(&packed).expect("could not unpack address");
 
-    assert_eq!(packed, [160, 206, 56, 206, 34, 36, 210, 206, 202, 249, 146, 147, 136, 247, 51, 121, 37, 156, 12, 39, 224, 222, 189, 189, 124, 164, 205, 8, 91, 85, 226, 90, 225, 16]);
+    assert_eq!(
+      packed,
+      [
+        160, 206, 56, 206, 34, 36, 210, 206, 202, 249, 146, 147, 136, 247, 51, 121, 37, 156, 12,
+        39, 224, 222, 189, 189, 124, 164, 205, 8, 91, 85, 226, 90, 225, 16
+      ]
+    );
     assert_eq!(unpacked.to_string(), address_string);
   }
 
   #[cfg(feature = "loki")]
   #[test]
   fn test_pack_loki() {
-    let address_string = "dw68y1xhptqbhcm5s8aaaip6dbopykagig5q5u1za4c7pzxto77y.loki:4321".to_string();
+    let address_string =
+      "dw68y1xhptqbhcm5s8aaaip6dbopykagig5q5u1za4c7pzxto77y.loki:4321".to_string();
     let address = PeerAddr::parse(&address_string).expect("could not parse address");
     let packed = address.pack();
     let unpacked = PeerAddr::unpack(&packed).expect("could not unpack address");
 
-    assert_eq!(packed, [160, 206, 56, 206, 34, 36, 210, 206, 202, 249, 146, 147, 136, 247, 51, 121, 37, 156, 12, 39, 224, 222, 189, 189, 124, 164, 205, 8, 91, 85, 226, 90, 225, 16]);
+    assert_eq!(
+      packed,
+      [
+        160, 206, 56, 206, 34, 36, 210, 206, 202, 249, 146, 147, 136, 247, 51, 121, 37, 156, 12,
+        39, 224, 222, 189, 189, 124, 164, 205, 8, 91, 85, 226, 90, 225, 16
+      ]
+    );
     assert_eq!(unpacked.to_string(), address_string);
   }
 }

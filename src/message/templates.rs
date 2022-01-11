@@ -30,7 +30,7 @@ pub struct Handshake {
   pub rev:             usize,
   /// The address this handshake is addressed to, including ".onion" or ".b32.i2p"
   #[serde(default, skip_serializing_if = "is_default", rename = "target_ip")]
-  pub target_address:       Option<String>,
+  pub target_address:  Option<String>,
   #[serde(default, skip_serializing_if = "is_default")]
   pub version:         String,
 }
@@ -48,15 +48,15 @@ impl Handshake {
       crypt_supported: vec![],
       time:            now.duration_since(UNIX_EPOCH).unwrap().as_secs(),
 
-      onion:     None,
-      crypt:     None,
+      onion:          None,
+      crypt:          None,
       target_address: None,
-      peer_id:   String::new(),
+      peer_id:        String::new(),
     }
   }
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
 #[serde(default)]
 pub struct Announce {
   pub port:            usize,

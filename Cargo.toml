@@ -1,6 +1,6 @@
 [package]
 name = "zeronet_protocol"
-version = "0.1.8"
+version = "0.1.9"
 authors = ["Ansho Rei <anshorei@protonmail.com>"]
 edition = "2018"
 description = "Async ZeroNet Protocol implementation in Rust"
