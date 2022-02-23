@@ -39,8 +39,8 @@ impl Handshake {
   pub fn new() -> Handshake {
     let now = SystemTime::now();
     Handshake {
-      version:         "0.7".to_string(),
-      rev:             4486,
+      version:         "0.7.6".to_string(),
+      rev:             4565,
       protocol:        "v2".to_string(),
       use_bin_type:    true,
       fileserver_port: 0,
