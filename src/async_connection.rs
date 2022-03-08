@@ -2,6 +2,7 @@ use crate::error::Error;
 use crate::requestable::Requestable;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde_json::Value;
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::future::Future;
@@ -52,8 +53,26 @@ where
       let mut writer = writer.lock().unwrap();
 
       // TODO: add timeout for pending requests
-      let result = rmp_serde::encode::write_named(&mut *writer, &state.value.take().unwrap()).map_err(|err| Error::from(err));
-      state.result = Some(result);
+      // let result = rmp_serde::encode::write_named(&mut *writer, &state.value.take().unwrap()).map_err(|err| Error::from(err));
+      // state.result = Some(result);
+      if let Some(value) = state.value.take() {
+        let jsoned = match serde_json::to_value(value) {
+          Ok(json) => json,
+          Err(err) => {
+            state.result = Some(Err(err.into()));
+            waker.wake();
+            return;
+          }
+        };
+        let value: Result<Value, _> = serde_json::from_value(jsoned);
+        let result = match value {
+          Err(err) => Err(Error::from(err)),
+          Ok(jsoned) => {
+            rmp_serde::encode::write_named(&mut *writer, &jsoned).map_err(|err| Error::from(err))
+          }
+        };
+        state.result = Some(result);
+      }
 
       waker.wake();
     });
