@@ -56,6 +56,11 @@ impl Handshake {
   }
 }
 
+#[derive(Serialize, Deserialize, Default, Debug)]
+pub struct PingResponse {
+  pub body: String,
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
 #[serde(default)]
 pub struct Announce {
