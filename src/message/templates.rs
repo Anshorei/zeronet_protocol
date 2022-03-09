@@ -151,6 +151,7 @@ pub struct StreamFileResponse {
   pub stream_bytes: usize,
 }
 
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Pex {
   pub site:        String,
   pub peers:       Vec<ByteBuf>,
@@ -158,6 +159,7 @@ pub struct Pex {
   pub need:        usize,
 }
 
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct PexResponse {
   pub peers:       Vec<ByteBuf>,
   pub peers_onion: Vec<ByteBuf>,
@@ -179,11 +181,13 @@ pub struct UpdateFileResponse {
   pub ok: bool,
 }
 
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct ListModified {
   pub site:  String,
   pub since: usize,
 }
 
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct ListModifiedResponse {
   pub modified_files: HashMap<String, usize>,
 }
