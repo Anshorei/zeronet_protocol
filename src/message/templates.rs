@@ -1,6 +1,7 @@
 use crate::util::is_default;
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -165,20 +166,24 @@ pub struct PexResponse {
   pub peers_onion: Vec<ByteBuf>,
 }
 
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct UpdateFile {
   pub site:       String,
   pub inner_path: String,
-  pub body:       ByteBuf,
-  pub diffs:      Vec<Diff>,
+  pub body:       String,
+  pub diffs:      HashMap<String, Vec<Value>>,
 }
+
+#[derive(Serialize, Deserialize, Default, Debug)]
 
 pub struct Diff {
   pub opcode: String,
   pub diff:   String,
 }
 
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct UpdateFileResponse {
-  pub ok: bool,
+  pub ok: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
