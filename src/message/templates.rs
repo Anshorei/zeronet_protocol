@@ -126,6 +126,11 @@ impl Debug for AnnouncePeers {
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
+pub struct ErrorResponse {
+  pub error: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct GetFile {
   pub site:       String,
   pub inner_path: String,
@@ -156,7 +161,7 @@ pub struct StreamFileResponse {
 pub struct Pex {
   pub site:        String,
   pub peers:       Vec<ByteBuf>,
-  pub peers_onion: Vec<ByteBuf>,
+  pub peers_onion: Option<Vec<ByteBuf>>,
   pub need:        usize,
 }
 
