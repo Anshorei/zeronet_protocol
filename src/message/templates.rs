@@ -166,6 +166,7 @@ pub struct Pex {
   pub site:        String,
   pub peers:       Vec<ByteBuf>,
   pub peers_onion: Option<Vec<ByteBuf>>,
+  pub peers_ipv6:  Option<Vec<ByteBuf>>,
   pub need:        usize,
 }
 
