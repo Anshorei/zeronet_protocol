@@ -125,17 +125,17 @@ impl Debug for AnnouncePeers {
   }
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ErrorResponse {
   pub error: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct OkResponse {
   pub ok: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GetFile {
   pub site:       String,
   pub inner_path: String,
@@ -144,25 +144,25 @@ pub struct GetFile {
   pub file_size:  usize,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GetFileResponse {
   pub body:     ByteBuf,
   pub location: usize,
   pub size:     usize,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct StreamFile {
   pub inner_path: String,
   pub size:       usize,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct StreamFileResponse {
   pub stream_bytes: usize,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Pex {
   pub site:        String,
   pub peers:       Vec<ByteBuf>,
@@ -171,13 +171,14 @@ pub struct Pex {
   pub need:        usize,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct PexResponse {
   pub peers:       Vec<ByteBuf>,
+  pub peers_ipv6:  Vec<ByteBuf>,
   pub peers_onion: Vec<ByteBuf>,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct UpdateFile {
   pub site:       String,
   pub inner_path: String,
@@ -185,86 +186,96 @@ pub struct UpdateFile {
   pub diffs:      HashMap<String, Vec<Value>>,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
-
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Diff {
   pub opcode: String,
   pub diff:   String,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct UpdateFileResponse {
   pub ok: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ListModified {
   pub site:  String,
   pub since: usize,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ListModifiedResponse {
   pub modified_files: HashMap<String, usize>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GetHashfield {
   pub site: String,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GetHashfieldResponse {
   pub hashfield_raw: ByteBuf,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SetHashfield {
   pub site:          String,
   pub hashfield_raw: ByteBuf,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SetHashfieldResponse {
   pub ok: bool,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct FindHashIds {
   pub site:     String,
   pub hash_ids: Vec<usize>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct FindHashIdsResponse {
   pub peers:       HashMap<usize, Vec<ByteBuf>>,
   pub peers_onion: HashMap<usize, Vec<ByteBuf>>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Checkport {
   pub port: u16,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct CheckportResponse {
   pub status:      String,
   pub ip_external: String,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GetPieceFields {
   pub site: String,
 }
 
 // TODO: do piecefields properly
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GetPieceFieldsResponse {
   pub piecefields_packed: ByteBuf,
 }
 
 // TODO: do piecefields properly
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SetPieceFields {
   pub site:               String,
   pub piecefields_packed: ByteBuf,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SetPieceFieldsResponse {
   pub ok: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
-#[serde(default)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Error {
   pub error: String,
 }
