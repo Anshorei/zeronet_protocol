@@ -131,6 +131,11 @@ pub struct ErrorResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
+pub struct OkResponse {
+  pub ok: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct GetFile {
   pub site:       String,
   pub inner_path: String,
