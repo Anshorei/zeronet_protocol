@@ -140,6 +140,7 @@ pub struct GetFile {
   pub site:       String,
   pub inner_path: String,
   pub location:   usize,
+  pub read_bytes: Option<usize>,
   #[serde(skip_serializing_if = "is_default")]
   pub file_size:  usize,
 }
@@ -183,6 +184,7 @@ pub struct UpdateFile {
   pub site:       String,
   pub inner_path: String,
   pub body:       String,
+  pub modified:   usize,
   pub diffs:      HashMap<String, Vec<Value>>,
 }
 
@@ -238,7 +240,9 @@ pub struct FindHashIds {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FindHashIdsResponse {
   pub peers:       HashMap<usize, Vec<ByteBuf>>,
+  pub peers_ipv6:  HashMap<usize, Vec<ByteBuf>>,
   pub peers_onion: HashMap<usize, Vec<ByteBuf>>,
+  pub my:          Vec<usize>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
