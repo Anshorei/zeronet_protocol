@@ -248,7 +248,7 @@ impl PeerAddr {
   /// let address = PeerAddr::unpack(&bytes).unwrap();
   /// assert_eq!(address.to_string(), "127.0.0.1:4321".to_string());
   /// ```
-  pub fn unpack(bytes: &Vec<u8>) -> Result<PeerAddr, AddressError> {
+  pub fn unpack(bytes: &[u8]) -> Result<PeerAddr, AddressError> {
     match bytes.len() {
       6 => {
         let mut array = [0u8; 4];

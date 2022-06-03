@@ -1,9 +1,8 @@
 use crate::async_connection::Connection;
 use crate::error::Error;
-use crate::message::{Request, Response, ZeroMessage};
+use crate::message::templates::Handshake;
+use crate::message::{Request, RequestType, Response, ResponseType, ZeroMessage};
 use crate::PeerAddr;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use std::future::Future;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
@@ -79,19 +78,23 @@ impl ZeroConnection {
 
   /// Connect to an ip and port and perform the handshake,
   /// then return the ZeroConnection.
-  pub fn connect(address: String) -> impl Future<Output = Result<ZeroConnection, Error>> {
+  pub fn connect(
+    address: String,
+    handshake: Handshake,
+  ) -> impl Future<Output = Result<ZeroConnection, Error>> {
     return async {
       let address = PeerAddr::parse(address)?;
       let mut connection = ZeroConnection::from_address(address.clone()).unwrap();
+      // let mut body = Handshake::default();
+      // body.target_address = Some(address.to_string());
+      // // TODO:
+      // // - by default peer_id should be empty string
+      // // - peer_id is only generated for clearnet peers
+      // body.peer_id = String::new();
 
-      let mut body = crate::message::templates::Handshake::default();
-      body.target_address = Some(address.to_string());
-      // TODO:
-      // - by default peer_id should be empty string
-      // - peer_id is only generated for clearnet peers
-      body.peer_id = String::new();
-
-      let _resp = connection.request("handshake", body).await?;
+      let _resp = connection
+        .request("handshake", RequestType::Handshake(handshake))
+        .await?;
       // TODO: update the connection with information from the handshake
       // - peer_id
       // - port
@@ -121,13 +124,13 @@ impl ZeroConnection {
   /// Respond to a request.
   /// The `body` variable is flattened into the ZeroMessage,
   /// therefore it should be an object, a map or a pair.
-  pub fn respond<T: DeserializeOwned + Serialize>(
+  pub fn respond(
     &mut self,
     to: usize,
-    body: T,
+    body: ResponseType,
   ) -> impl Future<Output = Result<(), Error>> {
     let message = ZeroMessage::response(to, body);
-    self.connection.send(message)
+    self.connection.send(message, None)
   }
 
   /// Returns a future that will send a request with
@@ -135,10 +138,10 @@ impl ZeroConnection {
   /// and attempt to decode valid ZeroMessages.
   /// The future returns the first Response that
   /// has the corresponding `to` field.
-  pub fn request<T: DeserializeOwned + Serialize>(
+  pub fn request(
     &mut self,
     cmd: &str,
-    body: T,
+    body: RequestType,
   ) -> impl Future<Output = Result<Response, Error>> {
     let message = ZeroMessage::request(cmd, self.req_id(), body);
     let result = self.connection.request(message);
@@ -168,7 +171,7 @@ impl ZeroConnection {
 #[cfg(test)]
 mod tests {
   use super::ZeroConnection;
-  use crate::ZeroMessage;
+  use crate::{message::RequestType, templates::Ping, ZeroMessage};
   use futures::executor::block_on;
   use std::{
     io::{Error, ErrorKind, Read, Result, Write},
@@ -265,7 +268,7 @@ mod tests {
   #[test]
   fn test_connection() {
     let (mut server, mut client) = create_pair();
-    let request = client.request("ping", String::new());
+    let request = client.request("ping", RequestType::Ping(Ping()));
     std::thread::spawn(move || {
       block_on(request).unwrap();
     });
@@ -279,10 +282,26 @@ mod tests {
     let mut server2 = server1.clone();
 
     std::thread::spawn(move || {
-      block_on(client.connection.send(ZeroMessage::request("ping", 0, ()))).unwrap();
-      block_on(client.connection.send(ZeroMessage::request("ping", 1, ()))).unwrap();
-      block_on(client.connection.send(ZeroMessage::request("ping", 2, ()))).unwrap();
-      block_on(client.connection.send(ZeroMessage::request("ping", 3, ()))).unwrap();
+      block_on(client.connection.send(
+        ZeroMessage::request("ping", 0, RequestType::Ping(Ping())),
+        None,
+      ))
+      .unwrap();
+      block_on(client.connection.send(
+        ZeroMessage::request("ping", 1, RequestType::Ping(Ping())),
+        None,
+      ))
+      .unwrap();
+      block_on(client.connection.send(
+        ZeroMessage::request("ping", 2, RequestType::Ping(Ping())),
+        None,
+      ))
+      .unwrap();
+      block_on(client.connection.send(
+        ZeroMessage::request("ping", 3, RequestType::Ping(Ping())),
+        None,
+      ))
+      .unwrap();
     });
     std::thread::spawn(move || {
       block_on(server1.recv()).ok().unwrap();
@@ -299,7 +318,7 @@ mod tests {
     let client2 = client1.clone();
 
     std::thread::spawn(move || {
-      block_on(client1.request("ping", ())).unwrap();
+      block_on(client1.request("ping", RequestType::Ping(Ping()))).unwrap();
     });
     let result = block_on(server.recv()).ok().unwrap();
     assert!(result.req_id == client2.last_req_id());

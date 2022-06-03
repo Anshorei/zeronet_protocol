@@ -1,20 +1,57 @@
-use crate::error::Error;
-use crate::requestable::Requestable;
-use crate::util::is_default;
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_bytes::ByteBuf;
 
 pub mod templates;
 pub mod value;
 
-use value::Value;
+use crate::{error::Error, requestable::Requestable, templates::*};
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum RequestType {
+  Handshake(Handshake),
+  Ping(Ping),
+  GetFile(GetFile),
+  StreamFile(StreamFile),
+  Pex(Pex),
+  Update(Update),
+  ListModified(ListModified),
+  GetHashfield(GetHashfield),
+  SetHashfield(SetHashfield),
+  FindHashIds(FindHashIds),
+  Checkport(Checkport),
+  GetPieceFields(GetPieceFields),
+  SetPieceFields(SetPieceFields),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum ResponseType {
+  Handshake(Handshake),
+  Ping(PingResponse),
+  GetFile(GetFileResponse),
+  StreamFile(StreamFileResponse, ByteBuf),
+  Pex(PexResponse),
+  Update(UpdateResponse),
+  ListModified(ListModifiedResponse),
+  GetHashfield(GetHashfieldResponse),
+  SetHashfield(SetHashfieldResponse),
+  FindHashIds(FindHashIdsResponse),
+  Checkport(CheckportResponse),
+  GetPieceFields(GetPieceFieldsResponse),
+  SetPieceFields(SetPieceFieldsResponse),
+  Ok(OkResponse),
+  Err(ErrorResponse),
+  InvalidRequest,
+  UnknownCmd,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Response {
   pub cmd:  String,
   pub to:   usize,
   #[serde(flatten)]
-  response: Value,
+  response: ResponseType,
 }
 
 impl Response {
@@ -29,8 +66,7 @@ impl Response {
 pub struct Request {
   pub cmd:    String,
   pub req_id: usize,
-  #[serde(default, skip_serializing_if = "is_default")]
-  params:     Value,
+  params:     RequestType,
 }
 
 impl Request {
@@ -49,23 +85,19 @@ pub enum ZeroMessage {
 }
 
 impl ZeroMessage {
-  pub fn request<V: DeserializeOwned + Serialize>(
-    cmd: &str,
-    req_id: usize,
-    body: V,
-  ) -> ZeroMessage {
+  pub fn request(cmd: &str, req_id: usize, body: RequestType) -> ZeroMessage {
     let request = Request {
       cmd: cmd.to_string(),
       req_id,
-      params: serde_json::from_value(serde_json::to_value(body).unwrap()).unwrap(),
+      params: body,
     };
     ZeroMessage::Request(request)
   }
-  pub fn response<V: DeserializeOwned + Serialize>(to: usize, body: V) -> ZeroMessage {
+  pub fn response(to: usize, body: ResponseType) -> ZeroMessage {
     let response = Response {
       cmd: "response".to_string(),
       to,
-      response: serde_json::from_value(serde_json::to_value(body).unwrap()).unwrap(),
+      response: body,
     };
     ZeroMessage::Response(response)
   }
@@ -109,8 +141,35 @@ impl Requestable for ZeroMessage {
 #[cfg(test)]
 #[cfg_attr(tarpaulin, ignore)]
 mod tests {
-  use super::ZeroMessage;
-  use crate::requestable::Requestable;
+  use crate::{message::ResponseType, requestable::Requestable, templates::*, ZeroMessage};
+
+  #[test]
+  fn test_get_file_response_and_body() {
+    let bytes = b"0";
+    let len = bytes.len();
+    let v = GetFileResponse {
+      body:     ByteBuf::from(bytes),
+      location: 0,
+      size:     len,
+    };
+    let r = ZeroMessage::response(0, ResponseType::GetFile(v));
+    let res = rmp_serde::to_vec_named(&r);
+    assert!(res.is_ok());
+    let bytes = [
+      133, 163, 99, 109, 100, 168, 114, 101, 115, 112, 111, 110, 115, 101, 162, 116, 111, 0, 164,
+      98, 111, 100, 121, 196, 1, 48, 168, 108, 111, 99, 97, 116, 105, 111, 110, 0, 164, 115, 105,
+      122, 101, 1,
+    ];
+    assert_eq!(res.unwrap(), bytes);
+    let res = r.body::<GetFileResponse>();
+    assert!(res.is_ok());
+    let res = rmp_serde::to_vec_named(&res.unwrap());
+    let bytes = [
+      131, 164, 98, 111, 100, 121, 196, 1, 48, 168, 108, 111, 99, 97, 116, 105, 111, 110, 0, 164,
+      115, 105, 122, 101, 1,
+    ];
+    assert_eq!(res.unwrap(), bytes);
+  }
 
   fn des(text: &str) -> Result<ZeroMessage, serde_json::error::Error> {
     serde_json::from_str(text)
@@ -128,6 +187,7 @@ mod tests {
   }
 
   use serde::{Deserialize, Serialize};
+  use serde_bytes::ByteBuf;
   #[derive(Deserialize, Serialize, Debug)]
   struct AnnounceParams {
     hashes:     Vec<serde_bytes::ByteBuf>,

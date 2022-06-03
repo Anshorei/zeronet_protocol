@@ -1,8 +1,8 @@
 use crate::error::Error;
-use crate::message::value::Value;
 use crate::requestable::Requestable;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde_bytes::ByteBuf;
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::future::Future;
@@ -25,6 +25,7 @@ pub struct SharedState<T: Requestable> {
 pub struct SendState<T> {
   pub writer: Arc<Mutex<dyn Write + Send>>,
   pub value:  Option<T>,
+  pub buf:    Option<ByteBuf>,
   pub result: Option<Result<(), Error>>,
 }
 
@@ -52,37 +53,33 @@ where
       let writer = state.writer.clone();
       let mut writer = writer.lock().unwrap();
 
-      // TODO: replace this once issue is resolved
-      // first we have to serialize to json value
-      // because rmp_serde gives UnknownLength error
-      // https://github.com/3Hren/msgpack-rust/issues/196
-      // when this get fixed we can just use:
-      //
-      // let result = rmp_serde::encode::write_named(&mut *writer, &state.value.take().unwrap())
-      // 	.map_err(|err| Error::from(err));
-      // state.result = Some(result);
-
       // TODO: add timeout for pending requests
-
-      if let Some(value) = state.value.take() {
-        let jsoned = match serde_json::to_value(value) {
-          Ok(json) => json,
-          Err(err) => {
-            state.result = Some(Err(err.into()));
-            waker.wake();
-            return;
-          }
-        };
-        let value: Result<Value, _> = serde_json::from_value(jsoned);
-        let result = match value {
-          Err(err) => Err(Error::from(err)),
-          Ok(jsoned) => {
-            rmp_serde::encode::write_named(&mut *writer, &jsoned).map_err(|err| Error::from(err))
-          }
-        };
-        state.result = Some(result);
+      let result = rmp_serde::encode::write_named(&mut *writer, &state.value.take().unwrap())
+        .map_err(|err| Error::from(err));
+      state.result = Some(result);
+      //TODO!
+      // if let Some(value) = state.value.take() {
+      // let jsoned = match serde_json::to_value(value) {
+      //   Ok(json) => json,
+      //   Err(err) => {
+      //     state.result = Some(Err(err.into()));
+      //     waker.wake();
+      //     return;
+      //   }
+      // };
+      // let value: Result<Value, _> = serde_json::from_value(jsoned);
+      // let result = match value {
+      //   Err(err) => Err(Error::from(err)),
+      //   Ok(jsoned) => {
+      //     rmp_serde::encode::write_named(&mut *writer, &jsoned).map_err(|err| Error::from(err))
+      //   }
+      // };
+      // state.result = Some(result);
+      // }
+      if let Some(buf) = state.buf.take() {
+        let res = rmp_serde::encode::write(&mut *writer, &buf).map_err(|err| Error::from(err));
+        state.result = Some(res);
       }
-
       waker.wake();
     });
 
@@ -284,12 +281,17 @@ where
     return shared_state.closed;
   }
 
-  pub fn send(&mut self, message: T) -> impl Future<Output = Result<(), Error>> {
+  pub fn send(
+    &mut self,
+    message: T,
+    buf: Option<ByteBuf>,
+  ) -> impl Future<Output = Result<(), Error>> {
     let shared_state = self.shared_state.lock().unwrap();
     let state = SendState {
       writer: shared_state.writer.clone(),
       result: None,
-      value:  Some(message),
+      value: Some(message),
+      buf,
     };
     SendFuture {
       state: Arc::new(Mutex::new(state)),
@@ -322,7 +324,7 @@ where
       req_id:       message.req_id(),
     };
 
-    let send_future = self.send(message);
+    let send_future = self.send(message, None);
 
     return async {
       let res = send_future.await;
