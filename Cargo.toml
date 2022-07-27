@@ -17,15 +17,17 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_derive = "1.0"
 serde_bytes = "0.11"
-rmp-serde = "1.0.0"
+rmp-serde = "1.1.0"
 rmpv = "1.0"
 rmp = "0.8"
-tokio = { version = "1.5" }
+tokio = { version = "1.20" }
 futures = "0.3"
 base64 = "0.13"
 koibumi-base32 = "0.0.2"
 itertools = "0.10"
 thiserror = "1.0"
+
+decentnet_protocol = { path = "../decentnet_protocol" }
 
 i2p = { version = "0.0.1", optional = true }
 tor = { version = "0.1", optional = true }

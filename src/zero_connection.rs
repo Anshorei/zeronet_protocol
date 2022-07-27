@@ -1,8 +1,8 @@
 use crate::async_connection::Connection;
 use crate::error::Error;
-use crate::message::templates::Handshake;
 use crate::message::{Request, RequestType, Response, ResponseType, ZeroMessage};
 use crate::PeerAddr;
+use decentnet_protocol::templates::Handshake;
 use std::future::Future;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
@@ -171,7 +171,8 @@ impl ZeroConnection {
 #[cfg(test)]
 mod tests {
   use super::ZeroConnection;
-  use crate::{message::RequestType, templates::Ping, ZeroMessage};
+  use crate::{message::RequestType, ZeroMessage};
+  use decentnet_protocol::templates::Ping;
   use futures::executor::block_on;
   use std::{
     io::{Error, ErrorKind, Read, Result, Write},
