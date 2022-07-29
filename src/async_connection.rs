@@ -53,31 +53,22 @@ where
       let writer = state.writer.clone();
       let mut writer = writer.lock().unwrap();
 
-      // TODO: add timeout for pending requests
-      let result = rmp_serde::encode::write_named(&mut *writer, &state.value.take().unwrap())
-        .map_err(|err| Error::from(err));
-      state.result = Some(result);
-      //TODO!
-      // if let Some(value) = state.value.take() {
-      // let jsoned = match serde_json::to_value(value) {
-      //   Ok(json) => json,
-      //   Err(err) => {
-      //     state.result = Some(Err(err.into()));
-      //     waker.wake();
-      //     return;
-      //   }
-      // };
-      // let value: Result<Value, _> = serde_json::from_value(jsoned);
-      // let result = match value {
-      //   Err(err) => Err(Error::from(err)),
-      //   Ok(jsoned) => {
-      //     rmp_serde::encode::write_named(&mut *writer, &jsoned).map_err(|err| Error::from(err))
-      //   }
-      // };
-      // state.result = Some(result);
-      // }
-      if let Some(buf) = state.buf.take() {
-        let res = rmp_serde::encode::write(&mut *writer, &buf).map_err(|err| Error::from(err));
+      if let Some(buf) = state.value.take() {
+        let jsoned = match serde_json::to_value(buf) {
+          Ok(json) => json,
+          Err(err) => {
+            state.result = Some(Err(err.into()));
+            waker.wake();
+            return;
+          }
+        };
+        let value: Result<serde_json::Value, _> = serde_json::from_value(jsoned);
+        let res = match value {
+          Err(err) => Err(Error::from(err)),
+          Ok(jsoned) => {
+            rmp_serde::encode::write_named(&mut *writer, &jsoned).map_err(|err| Error::from(err))
+          }
+        };
         state.result = Some(res);
       }
       waker.wake();

@@ -68,7 +68,6 @@ impl Response {
 pub struct Request {
   pub cmd:    String,
   pub req_id: usize,
-  #[serde(flatten)]
   params:     RequestType,
 }
 
