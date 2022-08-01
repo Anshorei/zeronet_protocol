@@ -6,6 +6,9 @@ pub mod requestable;
 pub mod util;
 pub mod zero_connection;
 
+#[cfg(test)]
+mod tests;
+
 pub use address::{PeerAddr, ToPeerAddrs};
 pub use error::Error;
 pub use message::templates;
