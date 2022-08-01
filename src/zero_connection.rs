@@ -109,28 +109,20 @@ impl ZeroConnection {
   /// Returns a future that will read from the internal reader
   /// and attempt to decode valid ZeroMessages.
   /// The future returns the first Request that gets decoded.
-  pub fn recv(&mut self) -> impl Future<Output = Result<Request, Error>> {
-    let result = self.connection.recv();
-
-    return async {
-      match result.await {
-        Err(err) => Err(err),
-        Ok(ZeroMessage::Response(_)) => Err(Error::UnexpectedResponse),
-        Ok(ZeroMessage::Request(req)) => Ok(req),
-      }
-    };
+  pub async fn recv(&mut self) -> Result<Request, Error> {
+    match self.connection.recv().await {
+      Err(err) => Err(err),
+      Ok(ZeroMessage::Response(_)) => Err(Error::UnexpectedResponse),
+      Ok(ZeroMessage::Request(req)) => Ok(req),
+    }
   }
 
   /// Respond to a request.
   /// The `body` variable is flattened into the ZeroMessage,
   /// therefore it should be an object, a map or a pair.
-  pub fn respond(
-    &mut self,
-    to: usize,
-    body: ResponseType,
-  ) -> impl Future<Output = Result<(), Error>> {
+  pub async fn respond(&mut self, to: usize, body: ResponseType) -> Result<(), Error> {
     let message = ZeroMessage::response(to, body);
-    self.connection.send(message, None)
+    self.connection.send(message, None).await
   }
 
   /// Returns a future that will send a request with
@@ -138,21 +130,15 @@ impl ZeroConnection {
   /// and attempt to decode valid ZeroMessages.
   /// The future returns the first Response that
   /// has the corresponding `to` field.
-  pub fn request(
-    &mut self,
-    cmd: &str,
-    body: RequestType,
-  ) -> impl Future<Output = Result<Response, Error>> {
-    let message = ZeroMessage::request(cmd, self.req_id(), body);
-    let result = self.connection.request(message);
+  pub async fn request(&mut self, cmd: &str, body: RequestType) -> Result<Response, Error> {
+    let req_id = self.req_id();
+    let message = ZeroMessage::request(cmd, req_id, body);
 
-    return async {
-      match result.await {
-        Err(err) => Err(err),
-        Ok(ZeroMessage::Response(res)) => Ok(res),
-        Ok(ZeroMessage::Request(_)) => Err(Error::UnexpectedRequest),
-      }
-    };
+    match self.connection.request(message).await {
+      Err(err) => Err(err),
+      Ok(ZeroMessage::Response(res)) => Ok(res),
+      Ok(ZeroMessage::Request(_)) => Err(Error::UnexpectedRequest),
+    }
   }
 
   /// Get the req_id of the last request

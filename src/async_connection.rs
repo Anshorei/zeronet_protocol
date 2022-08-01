@@ -267,16 +267,13 @@ where
       shared_state: Arc::new(Mutex::new(shared_state)),
     };
   }
+
   pub fn is_closed(&self) -> bool {
     let shared_state = self.shared_state.lock().unwrap();
     return shared_state.closed;
   }
 
-  pub fn send(
-    &mut self,
-    message: T,
-    buf: Option<ByteBuf>,
-  ) -> impl Future<Output = Result<(), Error>> {
+  pub async fn send(&mut self, message: T, buf: Option<ByteBuf>) -> Result<(), Error> {
     let shared_state = self.shared_state.lock().unwrap();
     let state = SendState {
       writer: shared_state.writer.clone(),
@@ -288,18 +285,20 @@ where
       state: Arc::new(Mutex::new(state)),
       waker: None,
     }
+    .await
   }
 
-  pub fn recv(&mut self) -> impl Future<Output = Result<T, Error>> {
+  pub async fn recv(&mut self) -> Result<T, Error> {
     let shared_state = self.shared_state.lock().unwrap();
 
     ReceiveFuture {
       shared_state: self.shared_state.clone(),
       values:       shared_state.values.clone(),
     }
+    .await
   }
 
-  pub fn request(&mut self, message: T) -> impl Future<Output = Result<T, Error>> {
+  pub async fn request(&mut self, message: T) -> Result<T, Error> {
     let value = Arc::new(Mutex::new(None));
 
     {
@@ -311,19 +310,15 @@ where
 
     let future = ResponseFuture {
       shared_state: self.shared_state.clone(),
-      value:        value,
-      req_id:       message.req_id(),
+      value,
+      req_id: message.req_id(),
     };
 
-    let send_future = self.send(message, None);
-
-    return async {
-      let res = send_future.await;
-      if res.is_ok() {
-        future.await
-      } else {
-        Err(res.unwrap_err())
-      }
-    };
+    let res = self.send(message, None).await;
+    if res.is_ok() {
+      future.await
+    } else {
+      Err(res.unwrap_err())
+    }
   }
 }
