@@ -68,7 +68,7 @@ impl Response {
 pub struct Request {
   pub cmd:    String,
   pub req_id: usize,
-  params:     RequestType,
+  params:     Option<RequestType>,
 }
 
 impl Request {
@@ -91,10 +91,11 @@ impl ZeroMessage {
     let request = Request {
       cmd: cmd.to_string(),
       req_id,
-      params: body,
+      params: Some(body),
     };
     ZeroMessage::Request(request)
   }
+
   pub fn response(to: usize, body: ResponseType) -> ZeroMessage {
     let response = Response {
       cmd: "response".to_string(),
@@ -103,6 +104,7 @@ impl ZeroMessage {
     };
     ZeroMessage::Response(response)
   }
+
   pub fn body<V: DeserializeOwned + Serialize>(self) -> Result<V, Error> {
     match self {
       ZeroMessage::Response(res) => res.body(),
