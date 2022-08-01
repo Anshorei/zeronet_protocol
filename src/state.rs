@@ -1,15 +1,17 @@
-use crate::error::Error;
-use crate::requestable::Requestable;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
+use std::{
+    collections::HashMap,
+    future::Future,
+    io::{Read, Write},
+    pin::Pin,
+    sync::{Arc, Mutex},
+    task::{Context, Poll, Waker},
+};
+
+use decentnet_protocol::interface::Requestable;
+use serde::{de::DeserializeOwned, Serialize};
 use serde_bytes::ByteBuf;
-use std::clone::Clone;
-use std::collections::HashMap;
-use std::future::Future;
-use std::io::{Read, Write};
-use std::pin::Pin;
-use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, Waker};
+
+use crate::error::Error;
 
 pub struct SharedState<T: Requestable> {
     pub reader: Arc<Mutex<dyn Read + Send>>,
@@ -35,10 +37,7 @@ pub struct SendFuture<T> {
     pub(super) waker: Option<Waker>,
 }
 
-impl<T> Future for SendFuture<T>
-where
-    T: 'static + DeserializeOwned + Serialize + Send + Requestable,
-{
+impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for SendFuture<T> {
     type Output = Result<(), Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -79,18 +78,12 @@ where
 }
 
 #[must_use = "futures do nothing unless polled"]
-pub struct ReceiveFuture<T>
-where
-    T: 'static + DeserializeOwned + Serialize + Send + Requestable,
-{
+pub struct ReceiveFuture<T: 'static + DeserializeOwned + Serialize + Send + Requestable> {
     pub(super) shared_state: Arc<Mutex<SharedState<T>>>,
     pub(super) values: Arc<Mutex<Vec<Result<T, Error>>>>,
 }
 
-impl<T> Future for ReceiveFuture<T>
-where
-    T: 'static + DeserializeOwned + Serialize + Send + Requestable,
-{
+impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for ReceiveFuture<T> {
     type Output = Result<T, Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -114,19 +107,13 @@ where
 }
 
 #[must_use = "futures do nothing unless polled"]
-pub struct ResponseFuture<T>
-where
-    T: 'static + DeserializeOwned + Serialize + Send + Requestable,
-{
+pub struct ResponseFuture<T: 'static + DeserializeOwned + Serialize + Send + Requestable> {
     pub(super) shared_state: Arc<Mutex<SharedState<T>>>,
     pub(super) value: Arc<Mutex<Option<Result<T, Error>>>>,
     pub(super) req_id: Option<T::Key>,
 }
 
-impl<T> Future for ResponseFuture<T>
-where
-    T: 'static + DeserializeOwned + Serialize + Send + Requestable,
-{
+impl<T: 'static + DeserializeOwned + Serialize + Send + Requestable> Future for ResponseFuture<T> {
     type Output = Result<T, Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -156,10 +143,10 @@ where
     }
 }
 
-fn recv<T>(shared_state: Arc<Mutex<SharedState<T>>>, waker: Waker)
-where
-    T: 'static + DeserializeOwned + Serialize + Send + Requestable,
-{
+fn recv<T: 'static + DeserializeOwned + Serialize + Send + Requestable>(
+    shared_state: Arc<Mutex<SharedState<T>>>,
+    waker: Waker,
+) {
     let shared_state_g = shared_state.lock().unwrap();
 
     {
