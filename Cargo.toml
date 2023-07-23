@@ -4,10 +4,10 @@ version = "0.1.10"
 authors = ["Ansho Rei <anshorei@protonmail.com>"]
 edition = "2018"
 description = "Async ZeroNet Protocol implementation in Rust"
-documentation = "http://www.github.com/Anshorei/zeronet_protocol"
+documentation = "https://www.github.com/Anshorei/zeronet_protocol"
 readme = "README.md"
-homepage = "http://www.github.com/Anshorei/zeronet_protocol"
-repository = "http://www.github.com/Anshorei/zeronet_protocol"
+homepage = "https://www.github.com/Anshorei/zeronet_protocol"
+repository = "https://www.github.com/Anshorei/zeronet_protocol"
 license = "WTFPL"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
